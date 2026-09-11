@@ -165,6 +165,20 @@ namespace SecureSistem.Controllers
             _context.Companies.Add(company);
             await _context.SaveChangesAsync();
 
+            // Every company needs at least one branch to operate the point of sale.
+            var mainBranch = new Branch
+            {
+                Name = "Sucursal Principal",
+                Address = request.Address,
+                Phone = request.Phone,
+                CompanyId = company.Id,
+                IsActive = true,
+                CreatedAt = now,
+                CreatedBy = currentUser
+            };
+            _context.Branches.Add(mainBranch);
+            await _context.SaveChangesAsync();
+
             // Standard system pages every company gets by default.
             var dashboard = new NavigationRoute
             {

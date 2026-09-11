@@ -14,6 +14,7 @@ namespace SecureSistem.Data
         }
 
         public DbSet<Company> Companies => Set<Company>();
+        public DbSet<Branch> Branches => Set<Branch>();
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
         public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();

@@ -761,3 +761,50 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260911233937_AddBranches'
+)
+BEGIN
+    CREATE TABLE [Branches] (
+        [Id] int NOT NULL IDENTITY,
+        [Name] nvarchar(200) NOT NULL,
+        [Address] nvarchar(300) NULL,
+        [Phone] nvarchar(20) NULL,
+        [CompanyId] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        [ModifiedAt] datetime2 NULL,
+        [ModifiedBy] nvarchar(100) NULL,
+        CONSTRAINT [PK_Branches] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_Branches_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260911233937_AddBranches'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_Branches_CompanyId_Name] ON [Branches] ([CompanyId], [Name]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260911233937_AddBranches'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260911233937_AddBranches', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
