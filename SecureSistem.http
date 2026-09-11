@@ -1,0 +1,6 @@
+@SecureSistem_HostAddress = http://localhost:5113
+
+GET {{SecureSistem_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
