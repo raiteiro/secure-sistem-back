@@ -21,12 +21,14 @@ trabajo normal (ver `CLAUDE.md`).
   `IsSystemAdmin = 1` en un usuario es con SQL directo contra la base. Antes de un
   despliegue real, decidir un mecanismo de bootstrap (seed controlado, flag de
   arranque, endpoint protegido por secreto de infraestructura, etc.).
-- [ ] **Logos de empresa guardados en disco local (`wwwroot/uploads/companies/`)**:
-  funciona para un solo servidor, pero no sobrevive a un despliegue con múltiples
-  instancias, contenedores efímeros o redeploys (el disco no es compartido ni
-  persistente en esos escenarios). Antes de escalar horizontalmente, mover a un
-  storage compartido (Azure Blob Storage, S3, un volumen persistente, etc.) y
-  actualizar `CompaniesController.UploadLogo` para subir ahí en vez de al disco local.
+- [ ] **Imágenes guardadas en disco local (`wwwroot/uploads/companies/`,
+  `wwwroot/uploads/products/`)**: funciona para un solo servidor, pero no
+  sobrevive a un despliegue con múltiples instancias, contenedores efímeros o
+  redeploys (el disco no es compartido ni persistente en esos escenarios).
+  Antes de escalar horizontalmente, mover a un storage compartido (Azure Blob
+  Storage, S3, un volumen persistente, etc.) y actualizar
+  `CompaniesController.UploadLogo` / `ProductsController.UploadImage` para
+  subir ahí en vez de al disco local.
 
 ## Seguridad / consistencia
 
@@ -39,6 +41,21 @@ trabajo normal (ver `CLAUDE.md`).
   contra fuerza bruta).
 
 ## Funcionalidad pendiente (del roadmap "qué le falta a un sistema base")
+
+- [x] ~~`CashSession.Close` no suma ventas en efectivo al `ExpectedAmount`~~ —
+  **resuelto**: ahora suma `OpeningAmount` más los `Payment.Amount` con
+  `Method == "Cash"` de las ventas cuyo `Sale.CashSessionId` es el de la
+  sesión que se cierra. Pagos con tarjeta/otro método no afectan el efectivo
+  esperado. Verificado en vivo con una venta de pago mixto (efectivo + tarjeta).
+
+- [ ] **`SalesController.Create` genera `FolioNumber` con `MAX(FolioNumber) + 1`
+  por empresa**: bajo alta concurrencia (dos cajeros cobrando al mismo tiempo
+  en la misma empresa), dos ventas podrían calcular el mismo folio antes de
+  que la primera haga commit, violando el índice único `(CompanyId,
+  FolioNumber)` y tirando un error de base de datos en vez de reintentar. Para
+  volumen bajo/medio no es urgente; si se vuelve un problema real, usar una
+  secuencia de SQL Server por empresa o un `UPDLOCK`/`SERIALIZABLE` explícito
+  al leer el máximo.
 
 - [ ] Permisos granulares por acción — hoy el control de acceso es solo por ruta de
   navegación (ver/no ver un módulo), no por operación dentro de un módulo (ej.

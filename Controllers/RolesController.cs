@@ -82,8 +82,10 @@ namespace SecureSistem.Controllers
         }
 
         /// <summary>
-        /// Creates a new role. System administrators may pass a CompanyId to create
-        /// the role directly in another company; anyone else always creates within their own.
+        /// Creates a new role, automatically assigning any navigation routes marked as
+        /// default-for-new-roles (core system pages every role should have out of the box).
+        /// System administrators may pass a CompanyId to create the role directly in another
+        /// company; anyone else always creates within their own.
         /// </summary>
         [HttpPost]
         [ProducesResponseType(typeof(RoleResponse), 201)]
@@ -125,9 +127,30 @@ namespace SecureSistem.Controllers
             _context.Roles.Add(role);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Role created: {Id} - {Name} by {CreatedBy}", role.Id, role.Name, currentUser);
+            var defaultRouteIds = await _context.NavigationRoutes
+                .Where(r => r.CompanyId == companyId && r.IsActive && r.IsDefaultForNewRoles)
+                .Select(r => r.Id)
+                .ToListAsync();
 
-            return CreatedAtAction(nameof(GetById), new { id = role.Id }, MapToResponse(role, new List<int>()));
+            foreach (var routeId in defaultRouteIds)
+            {
+                _context.RoleNavigationRoutes.Add(new RoleNavigationRoute
+                {
+                    RoleId = role.Id,
+                    NavigationRouteId = routeId,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = currentUser
+                });
+            }
+
+            if (defaultRouteIds.Count > 0)
+                await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Role created: {Id} - {Name} by {CreatedBy}, with {Count} default routes",
+                role.Id, role.Name, currentUser, defaultRouteIds.Count);
+
+            return CreatedAtAction(nameof(GetById), new { id = role.Id }, MapToResponse(role, defaultRouteIds));
         }
 
         /// <summary>

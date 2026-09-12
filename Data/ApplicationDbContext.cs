@@ -15,6 +15,20 @@ namespace SecureSistem.Data
 
         public DbSet<Company> Companies => Set<Company>();
         public DbSet<Branch> Branches => Set<Branch>();
+        public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+        public DbSet<TaxRate> TaxRates => Set<TaxRate>();
+        public DbSet<Category> Categories => Set<Category>();
+        public DbSet<Product> Products => Set<Product>();
+        public DbSet<Inventory> Inventories => Set<Inventory>();
+        public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
+        public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<CashRegister> CashRegisters => Set<CashRegister>();
+        public DbSet<CashSession> CashSessions => Set<CashSession>();
+        public DbSet<Sale> Sales => Set<Sale>();
+        public DbSet<SaleItem> SaleItems => Set<SaleItem>();
+        public DbSet<Payment> Payments => Set<Payment>();
+        public DbSet<Return> Returns => Set<Return>();
+        public DbSet<ReturnItem> ReturnItems => Set<ReturnItem>();
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
         public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();

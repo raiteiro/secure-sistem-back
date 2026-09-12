@@ -66,8 +66,11 @@ namespace SecureSistem.Controllers
         }
 
         /// <summary>
-        /// Creates a new branch. System administrators may pass a CompanyId to create
-        /// the branch directly in another company; anyone else always creates within their own.
+        /// Creates a new branch, along with a default warehouse for it (the common case is
+        /// one warehouse per branch; additional/independent warehouses can still be added
+        /// separately via <see cref="WarehousesController"/>). System administrators may pass
+        /// a CompanyId to create the branch directly in another company; anyone else always
+        /// creates within their own.
         /// </summary>
         [HttpPost]
         [ProducesResponseType(typeof(BranchResponse), 201)]
@@ -96,6 +99,15 @@ namespace SecureSistem.Controllers
             if (nameExists)
                 return BadRequest(new { message = "A branch with this name already exists." });
 
+            var warehouseName = $"Almacén {request.Name}";
+            var warehouseNameExists = await _context.Warehouses
+                .AnyAsync(w => w.Name == warehouseName && w.CompanyId == companyId && w.IsActive);
+            if (warehouseNameExists)
+                return BadRequest(new { message = "A warehouse with the auto-generated name for this branch already exists." });
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            var now = DateTime.UtcNow;
+
             var branch = new Branch
             {
                 Name = request.Name,
@@ -103,14 +115,28 @@ namespace SecureSistem.Controllers
                 Phone = request.Phone,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = now,
                 CreatedBy = currentUser
             };
-
             _context.Branches.Add(branch);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Branch created: {Id} - {Name} by {CreatedBy}", branch.Id, branch.Name, currentUser);
+            var warehouse = new Warehouse
+            {
+                Name = warehouseName,
+                Address = request.Address,
+                BranchId = branch.Id,
+                CompanyId = companyId,
+                IsActive = true,
+                CreatedAt = now,
+                CreatedBy = currentUser
+            };
+            _context.Warehouses.Add(warehouse);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.LogInformation("Branch created: {Id} - {Name} by {CreatedBy}, with default warehouse '{Warehouse}'",
+                branch.Id, branch.Name, currentUser, warehouse.Name);
 
             return CreatedAtAction(nameof(GetById), new { id = branch.Id }, MapToResponse(branch));
         }

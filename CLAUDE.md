@@ -126,6 +126,49 @@ Domain/Interfaces/IUserRepository.cs
   (`SymmetricSecurityKey` con key vacía / conexión a base de datos vacía); con
   las variables seteadas, funciona igual que con `appsettings.Development.json`.
 
+## Rutas de Navegación para Componentes Nuevos
+
+- Cada vez que se agregue un componente/módulo nuevo con su propia pantalla de
+  administración (un controller CRUD nuevo tipo Sucursales, Almacenes,
+  Categorías, Productos, Impuestos, etc.), se debe crear también su
+  `NavigationRoute` correspondiente y dejarla funcionando en automático para
+  todos, sin que el usuario tenga que pedirlo cada vez:
+  1. Crear el `NavigationRoute` de la pantalla (bajo el grupo que le
+     corresponda — ej. "Catálogo" para módulos de POS/inventario), marcado con
+     `IsDefaultForNewRoles = true`.
+  2. Agregarlo al bootstrap de `CompaniesController.Create` para que las
+     empresas nuevas lo tengan desde el día uno, asignado al rol admin inicial.
+  3. Gracias al flag `IsDefaultForNewRoles`, cualquier rol que se cree después
+     (`RolesController.Create`) lo recibe automáticamente activo — no hace
+     falta tocar ese controller de nuevo por cada componente nuevo.
+  4. Hacer **backfill** para las empresas y roles que ya existen: crear la
+     ruta ahí también y asignarla a todos sus roles activos (no solo al rol
+     admin), igual que se hizo con el grupo "Catálogo".
+- Si una pantalla es sensible (solo debe verla un admin, no todos los roles),
+  no se marca `IsDefaultForNewRoles = true` — se sigue el patrón viejo
+  (asignación explícita solo al rol que corresponda), como ya pasa con
+  Usuarios/Roles/Rutas/Empresas dentro de "Administración".
+
+## Handoff al Frontend por Controller Nuevo
+
+- Cada vez que se cree un controller nuevo para un módulo (CRUD de una entidad
+  nueva: Sucursales, Almacenes, Categorías, Productos, Impuestos, Inventario,
+  etc.), se debe entregar en el mismo turno un resumen de los cambios que el
+  frontend necesita aplicar, sin que el usuario tenga que pedirlo cada vez:
+  - Rutas del controller (métodos + paths).
+  - Shape del body para crear/editar (con ejemplo de JSON).
+  - Shape de la respuesta (con ejemplo de JSON), señalando campos calculados o
+    resueltos que el front no necesita cruzar a mano (ej. `categoryName`,
+    `isLowStock`).
+  - Reglas de negocio que afectan la UI: validaciones especiales, códigos de
+    error y su significado, qué botones deshabilitar según el estado.
+  - Cualquier convención no obvia (ej. `rate` como fracción no como porcentaje,
+    el signo de `quantity` según el `type` del movimiento).
+  - Si el componente agrega una ruta de navegación nueva, mencionar bajo qué
+    grupo quedó y si ya viene asignada a todos los roles.
+- Este resumen es aparte de, y no sustituye, la prueba en vivo del propio
+  endpoint (que sigue siendo obligatoria antes de dar el trabajo por hecho).
+
 ## Gestión de Deuda Técnica
 
 - Cuando durante el desarrollo surja trabajo diferido — algo que "hay que hacer

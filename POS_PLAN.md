@@ -15,23 +15,85 @@ nada de eso aquí.
   caja e inventario debe distinguir de cuál sucursal viene. Cuelga de `Company`.
   CRUD completo en `BranchesController` (`/api/branches`), con bootstrap
   automático de una "Sucursal Principal" al crear una empresa nueva, y regla de
-  que no se puede desactivar la última sucursal activa de una empresa.
-- [ ] **Catálogo de productos** — SKU/código de barras, nombre, categoría,
-  precio de venta, costo, unidad de medida, imagen.
-- [ ] **Ventas (el POS en sí)** — carrito, búsqueda rápida por código/nombre,
-  cálculo de totales, aplicar descuento, cobrar.
-- [ ] **Pagos** — efectivo, tarjeta, mixto (dividido entre métodos), cálculo de
-  cambio.
-- [ ] **Inventario** — stock por producto (por sucursal), movimientos
+  que no se puede desactivar la última sucursal activa de una empresa. **Crear
+  una sucursal también crea automáticamente su propio almacén** (`"Almacén
+  {NombreSucursal}"`) — cubre el caso común de 1 almacén por sucursal sin
+  perder la flexibilidad de tener almacenes independientes o varios por
+  sucursal cuando se necesite.
+- [x] **Catálogo de productos** — SKU/código de barras, nombre, categoría,
+  precio de venta, costo, unidad de medida, imagen. Tres controllers:
+  `TaxRatesController` (`/api/taxrates`), `CategoriesController`
+  (`/api/categories`) y `ProductsController` (`/api/products`, con
+  `POST /api/products/{id}/image` para subir foto, mismo patrón que el logo de
+  empresa). SKU único por empresa pero opcional (no todo producto lo necesita).
+  Categoría con productos activos no se puede desactivar.
+- [x] **Ventas (el POS en sí)** — carrito (líneas por producto), cálculo de
+  totales (subtotal, descuento, impuesto snapshot por línea, total), cobrar.
+  `SalesController` (`POST /api/sales`, `GET /api/sales`,
+  `GET /api/sales/{id}`). La venta solo puede registrarse contra un turno de
+  caja abierto (`CashSession`) del propio cajero; valida sucursal/almacén/
+  cliente/productos de la misma empresa, descuenta stock atómicamente vía
+  `InventoryMovement` (bloquea si no hay stock suficiente) y genera un
+  `FolioNumber` consecutivo por empresa. Todo en una sola transacción: si algo
+  falla, no se descuenta stock ni se cobra nada.
+- [x] **Pagos** — efectivo, tarjeta, "Other", uno o varios por venta (pago
+  mixto). La suma de los pagos debe igualar exactamente el total de la venta
+  (no hay cálculo de cambio: si el cliente paga con un billete más grande, el
+  front debe mandar el monto exacto a cobrar, no lo entregado). Cubierto por
+  `Payment`, expuesto anidado dentro de la respuesta de `Sale`.
+- [x] **Almacenes** — entidad independiente de Sucursal (una sucursal puede
+  tener 0, 1 o varios almacenes; también puede haber un almacén central sin
+  sucursal). CRUD completo en `WarehousesController` (`/api/warehouses`), con
+  bootstrap automático de un "Almacén Principal" ligado a la sucursal principal
+  al crear una empresa, y la misma regla de no poder desactivar el último activo.
+- [x] **Inventario** — stock por producto (por almacén), movimientos
   (entrada/salida/ajuste) como bitácora inmutable, alertas de stock bajo.
-- [ ] **Corte de caja / turnos** — apertura y cierre de caja, conteo de
-  efectivo, cuadre contra lo vendido, por cajero.
-- [ ] **Clientes** — registro básico, historial de compras (opcional, debe
+  `InventoryController` (`/api/inventory`, solo lectura + umbral de stock
+  mínimo) e `InventoryMovementsController` (`/api/inventorymovements`, crear
+  movimiento). Registrar un movimiento actualiza el stock atómicamente
+  (transacción); nunca se edita `Inventory.Quantity` directo. Bloquea si el
+  movimiento dejaría el stock en negativo.
+- [x] **Corte de caja / turnos** — apertura y cierre de caja, conteo de
+  efectivo, cuadre contra lo vendido, por cajero. `CashRegistersController`
+  (`/api/cashregisters`, CRUD de cajas por sucursal) y `CashSessionsController`
+  (`/api/cashsessions`: `open`, `{id}/close`, `current` para ver el turno
+  propio abierto). Reglas: una caja no puede tener dos turnos abiertos a la
+  vez; un cajero no puede tener dos turnos abiertos en cajas distintas; no se
+  puede desactivar una caja con turno abierto. `ExpectedAmount` al cerrar suma
+  el monto de apertura más los pagos en efectivo (`Payment.Method == "Cash"`)
+  de las ventas hechas durante ese turno; pagos con tarjeta/otro método no
+  cuentan para el efectivo esperado.
+- [x] **Clientes** — registro básico, historial de compras (opcional, debe
   poder venderse a "público en general" sin registrar cliente).
-- [ ] **Impuestos** — tasa de impuesto por producto/categoría, IVA incluido o
-  no incluido en el precio.
-- [ ] **Devoluciones y cancelaciones** — ligadas a la venta original, con
-  reingreso de stock.
+  `CustomersController` (`/api/customers`). Email único por empresa pero
+  opcional.
+- [x] **Impuestos** — tasa de impuesto reutilizable. Cubierto por `TaxRate` /
+  `TaxRatesController` (`/api/taxrates`), implementado como parte del catálogo
+  de productos ya que `Product` lo referencia directamente.
+- [x] **Devoluciones y cancelaciones** — ligadas a la venta original, con
+  reingreso de stock. Dos flujos separados:
+  - **Cancelación** (`POST /api/sales/{id}/cancel`): anula la venta completa.
+    Solo mientras el turno de caja de esa venta sigue abierto (corrección del
+    mismo turno) y solo si no tiene devoluciones ya aplicadas. Revierte todo
+    el stock, marca `Sale.Status = "Cancelled"` y no se puede repetir ni
+    revertir. `CashSession.Close` ya la excluye del efectivo esperado.
+  - **Devolución** (`POST /api/returns`, `GET /api/returns`,
+    `GET /api/returns/{id}`): parcial o total, por línea (`SaleItemId` +
+    cantidad), contra el turno de caja **actual** del cajero que la procesa
+    (puede ser distinto al turno original — puede pasar días después). Repone
+    stock al almacén original de la venta, calcula el monto a reembolsar
+    proporcional al descuento/impuesto ya snapshotteado en el `SaleItem`, y
+    exige un `RefundMethod` (Cash/Card/Other) — solo el efectivo resta del
+    efectivo esperado del turno que procesa la devolución
+    (`CashSession.Close` ya lo descuenta). No se puede devolver más de lo que
+    queda pendiente por línea (descuenta lo ya devuelto en devoluciones
+    previas).
+  - Nuevo tipo de movimiento de inventario `"Return"` (se comporta como
+    `"In"`), usado por ambos flujos y disponible también para registrar
+    movimientos manuales vía `InventoryMovementsController`.
+  - Pantalla nueva **Devoluciones** (`/devoluciones`), ítem suelto junto a
+    "Ventas", `IsDefaultForNewRoles = true`, con backfill para Empresa Demo y
+    VetPet (empresas activas) y todos sus roles activos.
 - [ ] **Tickets/recibos** — folio consecutivo, impresión, opcionalmente envío
   por correo.
 - [ ] **Reportes básicos** — ventas por día/periodo, productos más vendidos,
@@ -65,18 +127,47 @@ Punto de partida para la siguiente sesión de trabajo, antes de escribir código
 | Entidad | Notas |
 |---|---|
 | `Branch` (Sucursal) | ✅ Implementado. Cuelga de `Company`. |
-| `Category` | Categoría de producto. |
-| `Product` | SKU, precio, costo, categoría, impuesto aplicable. |
-| `Inventory` | Stock actual por producto + sucursal. |
-| `InventoryMovement` | Bitácora inmutable de entradas/salidas/ajustes. |
-| `Sale` | Encabezado de venta: sucursal, cajero, cliente, totales, fecha. |
-| `SaleItem` | Líneas de la venta (producto, cantidad, precio, descuento). |
-| `Payment` | Uno o más pagos por venta (efectivo/tarjeta/mixto). |
-| `CashRegister` / `CashSession` | Turno de caja: apertura, cierre, conteo. |
-| `Customer` | Cliente (opcional en la venta). |
-| `TaxRate` | Tasa de impuesto reutilizable por producto/categoría. |
+| `Warehouse` (Almacén) | ✅ Implementado. Cuelga de `Company`; `BranchId` opcional (null = almacén central independiente de cualquier sucursal). |
+| `Category` | ✅ Implementado. |
+| `Product` | ✅ Implementado. SKU, precio, costo, categoría, impuesto aplicable, imagen. |
+| `TaxRate` | ✅ Implementado (adelantado, ya lo usa `Product`). |
+| `Inventory` | ✅ Implementado. Stock actual por producto + almacén. |
+| `InventoryMovement` | ✅ Implementado. Bitácora inmutable de entradas/salidas/ajustes, con snapshot de `ResultingQuantity`. |
+| `Sale` | ✅ Implementado. Encabezado de venta: sucursal, almacén, cajero, cliente opcional, turno de caja, folio consecutivo por empresa, totales. |
+| `SaleItem` | ✅ Implementado. Líneas de la venta con snapshot de precio/tasa de impuesto al momento de vender (inmune a cambios posteriores del producto). |
+| `Payment` | ✅ Implementado. Uno o más pagos por venta (efectivo/tarjeta/otro); la suma debe igualar el total. |
+| `CashRegister` / `CashSession` | ✅ Implementado. Turno de caja: apertura, cierre, conteo. |
+| `Customer` | ✅ Implementado. Cliente (opcional en la venta). |
+| `Return` / `ReturnItem` | ✅ Implementado. Devolución parcial/total de una venta, procesada contra el turno de caja actual (no el original); repone stock y registra el reembolso. |
 | `Supplier` (fase 2) | Proveedor. |
 | `PurchaseOrder` (fase 2) | Orden de compra a proveedor. |
+
+## Menú de navegación del módulo POS
+
+Todas las pantallas de este módulo (Sucursales, Almacenes, Categorías,
+Productos, Impuestos, Inventario) cuelgan de un grupo nuevo **"Catálogo"** (separado de
+"Administración"), con rutas `/catalogo/*`. Se marcan con
+`NavigationRoute.IsDefaultForNewRoles = true`, lo que significa:
+
+- Se crean automáticamente al dar de alta una empresa nueva, asignadas al rol
+  admin inicial.
+- **Cualquier rol que se cree de aquí en adelante** (en cualquier empresa, sin
+  importar cuándo) las recibe automáticamente activas — no nace en blanco como
+  el resto de los permisos. La idea es que el control fino sea "desactivarlas
+  si un rol no las debe tener", no "activarlas a mano cada vez".
+- Se hizo backfill de esto para las empresas que ya existían (Empresa Demo,
+  VetPet) y todos sus roles activos.
+
+La pantalla de **Ventas** (`/ventas`, el checkout del POS en sí) es un ítem
+suelto — no cuelga de "Catálogo" — con su propio icono, también marcado
+`IsDefaultForNewRoles = true` y con el mismo backfill aplicado.
+
+**Pendiente de coordinar con el frontend:** Empresa Demo ya tenía una ruta
+"Sucursales" creada a mano bajo "Administración" (`/admin/sucursales`, antes
+de que existiera el grupo "Catálogo"). Quedó viva sin tocar para no romper
+nada — hay que avisarle al frontend que mueva esa referencia a la nueva
+"Sucursales" del grupo "Catálogo" y, una vez migrado, desactivar/eliminar la
+vieja.
 
 ## Cómo se prioriza
 

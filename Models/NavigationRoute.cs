@@ -49,6 +49,13 @@ namespace SecureSistem.Models
 
         public bool IsActive { get; set; } = true;
 
+        /// <summary>
+        /// When true, every newly created role automatically gets this route assigned
+        /// (active), instead of starting blank. Used for core system pages that every
+        /// role should have by default, as opposed to sensitive admin-only pages.
+        /// </summary>
+        public bool IsDefaultForNewRoles { get; set; } = false;
+
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime? ModifiedAt { get; set; }
