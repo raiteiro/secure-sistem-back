@@ -39,6 +39,16 @@ trabajo normal (ver `CLAUDE.md`).
   administración como admin de sistema.
 - [ ] **Sin bloqueo de cuenta por intentos fallidos de login** (protección básica
   contra fuerza bruta).
+- [ ] **`User.LastSeenAt` es por usuario, no por sesión/dispositivo**: el timeout
+  de inactividad real (`AuthController.Refresh`, ver `CLAUDE.md`-adjacent — no
+  documentado ahí, es interno de `AuthController`) compara la última actividad
+  del usuario completo, no de cada `RefreshToken` individual. Si el mismo
+  usuario tiene sesión abierta en dos dispositivos, actividad real en uno
+  mantiene "viva" la sesión del otro aunque ese segundo dispositivo esté
+  genuinamente inactivo. Para precisión por sesión habría que mover
+  `LastSeenAt` a `RefreshToken`, lo que requiere que el middleware sepa qué
+  refresh token corresponde al access token en uso (hoy no viaja ninguna
+  referencia al refresh token dentro del JWT).
 
 ## Funcionalidad pendiente (del roadmap "qué le falta a un sistema base")
 
@@ -57,15 +67,34 @@ trabajo normal (ver `CLAUDE.md`).
   secuencia de SQL Server por empresa o un `UPDLOCK`/`SERIALIZABLE` explícito
   al leer el máximo.
 
-- [ ] Permisos granulares por acción — hoy el control de acceso es solo por ruta de
-  navegación (ver/no ver un módulo), no por operación dentro de un módulo (ej.
-  `users.create` vs `users.delete`).
+- [ ] **Permisos granulares por acción: solo a nivel frontend, decisión
+  consciente.** Existe `Permission`/`RolePermission` (46 acciones, ver
+  `permissions.md`) y `GET /api/permissions/my-permissions`, pero **ningún
+  endpoint del backend valida estos permisos** — es intencional, se decidió
+  que alcanza con que el frontend oculte/deshabilite botones según el
+  permiso (ver `POS_PLAN.md` → "Permisos aplicados al POS"). Implicación a
+  tener presente: cualquiera con el JWT puede seguir llamando cualquier
+  endpoint directo por API (Postman, consola del navegador, etc.) sin que el
+  backend revise el permiso, sin importar lo que el frontend oculte — no es
+  un control de seguridad real, solo de UI. Si en algún momento se necesita
+  que sí lo sea, `Common/PermissionHelper.HasPermissionAsync` ya existe para
+  ese propósito; solo falta conectarlo acción por acción en el controller
+  que corresponda.
 - [ ] Tabla de auditoría de acciones (más allá de los campos `CreatedBy`/`ModifiedBy`
   que ya existen en cada entidad).
 - [ ] Paginación y filtrado en los listados (`Users`, `Roles`, `NavigationRoutes`,
   `Companies` devuelven todo sin paginar).
 - [ ] Versionado de API (`/api/v1/...`).
 - [ ] Health checks.
+- [ ] **Mensajes de validación automática de ASP.NET Core en inglés**: todos los
+  `message` que escribe el código propio (controllers) y los `ErrorMessage`
+  explícitos de las DTOs ya están en español (ver `CLAUDE.md` → "Idioma"), pero
+  un atributo de `DataAnnotations` sin `ErrorMessage` propio (ej. `[Required]`
+  a secas) sigue generando el mensaje default del framework en inglés — 78
+  atributos en 34 DTOs están en ese caso hoy. Arreglarlo de raíz requiere
+  localización real (`AddDataAnnotationsLocalization` + archivos de recursos
+  con `DisplayName` traducido por campo) en vez de escribir `ErrorMessage` a
+  mano en cada atributo uno por uno.
 
 ## Limpieza técnica
 

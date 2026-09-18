@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.TaxRates;
 using SecureSistem.Models;
@@ -59,7 +60,7 @@ namespace SecureSistem.Controllers
             var taxRate = await query.FirstOrDefaultAsync();
 
             if (taxRate is null)
-                return NotFound(new { message = "Tax rate not found." });
+                return NotFound(new { message = "Impuesto no encontrado." });
 
             return Ok(MapToResponse(taxRate));
         }
@@ -81,19 +82,19 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create tax rates in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear impuestos en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             var nameExists = await _context.TaxRates
                 .AnyAsync(t => t.Name == request.Name && t.CompanyId == companyId && t.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A tax rate with this name already exists." });
+                return BadRequest(new { message = "Ya existe un impuesto con este nombre." });
 
             var taxRate = new TaxRate
             {
@@ -101,7 +102,7 @@ namespace SecureSistem.Controllers
                 Rate = request.Rate,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -132,16 +133,16 @@ namespace SecureSistem.Controllers
             var taxRate = await query.FirstOrDefaultAsync();
 
             if (taxRate is null)
-                return NotFound(new { message = "Tax rate not found." });
+                return NotFound(new { message = "Impuesto no encontrado." });
 
             var nameExists = await _context.TaxRates
                 .AnyAsync(t => t.Name == request.Name && t.CompanyId == taxRate.CompanyId && t.Id != id && t.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A tax rate with this name already exists." });
+                return BadRequest(new { message = "Ya existe un impuesto con este nombre." });
 
             taxRate.Name = request.Name;
             taxRate.Rate = request.Rate;
-            taxRate.ModifiedAt = DateTime.UtcNow;
+            taxRate.ModifiedAt = DateTimeHelper.Now;
             taxRate.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -169,17 +170,17 @@ namespace SecureSistem.Controllers
             var taxRate = await query.FirstOrDefaultAsync();
 
             if (taxRate is null)
-                return NotFound(new { message = "Tax rate not found." });
+                return NotFound(new { message = "Impuesto no encontrado." });
 
             taxRate.IsActive = false;
-            taxRate.ModifiedAt = DateTime.UtcNow;
+            taxRate.ModifiedAt = DateTimeHelper.Now;
             taxRate.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Tax rate deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Tax rate deactivated successfully." });
+            return Ok(new { message = "Impuesto desactivado correctamente." });
         }
 
         private static TaxRateResponse MapToResponse(TaxRate taxRate)

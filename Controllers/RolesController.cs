@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Roles;
 using SecureSistem.DTOs.NavigationRoutes;
+using SecureSistem.DTOs.Permissions;
 using SecureSistem.Models;
 
 namespace SecureSistem.Controllers
@@ -71,7 +73,7 @@ namespace SecureSistem.Controllers
             var role = await query.FirstOrDefaultAsync();
 
             if (role is null)
-                return NotFound(new { message = "Role not found." });
+                return NotFound(new { message = "Rol no encontrado." });
 
             var routeIds = await _context.RoleNavigationRoutes
                 .Where(rr => rr.RoleId == id && rr.IsActive)
@@ -100,19 +102,19 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create roles in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear roles en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             var nameExists = await _context.Roles
                 .AnyAsync(r => r.Name == request.Name && r.CompanyId == companyId && r.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A role with this name already exists." });
+                return BadRequest(new { message = "Ya existe un rol con este nombre." });
 
             var role = new Role
             {
@@ -120,7 +122,7 @@ namespace SecureSistem.Controllers
                 Description = request.Description,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -139,7 +141,7 @@ namespace SecureSistem.Controllers
                     RoleId = role.Id,
                     NavigationRouteId = routeId,
                     IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTimeHelper.Now,
                     CreatedBy = currentUser
                 });
             }
@@ -147,8 +149,30 @@ namespace SecureSistem.Controllers
             if (defaultRouteIds.Count > 0)
                 await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Role created: {Id} - {Name} by {CreatedBy}, with {Count} default routes",
-                role.Id, role.Name, currentUser, defaultRouteIds.Count);
+            // Permission catalog is global (not per-company), unlike routes.
+            var defaultPermissionIds = await _context.Permissions
+                .Where(p => p.IsActive && p.IsDefaultForNewRoles)
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            foreach (var permissionId in defaultPermissionIds)
+            {
+                _context.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = role.Id,
+                    PermissionId = permissionId,
+                    IsActive = true,
+                    CreatedAt = DateTimeHelper.Now,
+                    CreatedBy = currentUser
+                });
+            }
+
+            if (defaultPermissionIds.Count > 0)
+                await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Role created: {Id} - {Name} by {CreatedBy}, with {RouteCount} default routes and {PermissionCount} default permissions",
+                role.Id, role.Name, currentUser, defaultRouteIds.Count, defaultPermissionIds.Count);
 
             return CreatedAtAction(nameof(GetById), new { id = role.Id }, MapToResponse(role, defaultRouteIds));
         }
@@ -171,16 +195,16 @@ namespace SecureSistem.Controllers
             var role = await query.FirstOrDefaultAsync();
 
             if (role is null)
-                return NotFound(new { message = "Role not found." });
+                return NotFound(new { message = "Rol no encontrado." });
 
             var nameExists = await _context.Roles
                 .AnyAsync(r => r.Name == request.Name && r.CompanyId == role.CompanyId && r.Id != id && r.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A role with this name already exists." });
+                return BadRequest(new { message = "Ya existe un rol con este nombre." });
 
             role.Name = request.Name;
             role.Description = request.Description;
-            role.ModifiedAt = DateTime.UtcNow;
+            role.ModifiedAt = DateTimeHelper.Now;
             role.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -213,23 +237,23 @@ namespace SecureSistem.Controllers
             var role = await query.FirstOrDefaultAsync();
 
             if (role is null)
-                return NotFound(new { message = "Role not found." });
+                return NotFound(new { message = "Rol no encontrado." });
 
             // Check if any active users are using this role
             var usersWithRole = await _context.Users
                 .AnyAsync(u => u.RoleId == id && u.IsActive);
             if (usersWithRole)
-                return BadRequest(new { message = "Cannot deactivate role. There are active users assigned to it." });
+                return BadRequest(new { message = "No se puede desactivar el rol. Hay usuarios activos asignados a él." });
 
             role.IsActive = false;
-            role.ModifiedAt = DateTime.UtcNow;
+            role.ModifiedAt = DateTimeHelper.Now;
             role.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Role deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Role deactivated successfully." });
+            return Ok(new { message = "Rol desactivado correctamente." });
         }
 
         /// <summary>
@@ -247,7 +271,7 @@ namespace SecureSistem.Controllers
 
             var roleExists = await roleQuery.AnyAsync();
             if (!roleExists)
-                return NotFound(new { message = "Role not found." });
+                return NotFound(new { message = "Rol no encontrado." });
 
             var routes = await _context.RoleNavigationRoutes
                 .Where(rr => rr.RoleId == id && rr.IsActive)
@@ -289,7 +313,7 @@ namespace SecureSistem.Controllers
 
             var role = await roleQuery.FirstOrDefaultAsync();
             if (role is null)
-                return NotFound(new { message = "Role not found." });
+                return NotFound(new { message = "Rol no encontrado." });
 
             // Validate all route IDs belong to the same company as the role
             var validRouteIds = await _context.NavigationRoutes
@@ -317,7 +341,7 @@ namespace SecureSistem.Controllers
                     RoleId = id,
                     NavigationRouteId = routeId,
                     IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTimeHelper.Now,
                     CreatedBy = currentUser
                 });
             }
@@ -327,7 +351,99 @@ namespace SecureSistem.Controllers
             _logger.LogInformation("Routes assigned to role {RoleId}: {Count} routes by {User}",
                 id, validRouteIds.Count, currentUser);
 
-            return Ok(new { message = $"{validRouteIds.Count} routes assigned successfully.", routeIds = validRouteIds });
+            return Ok(new { message = $"Se asignaron {validRouteIds.Count} rutas correctamente.", routeIds = validRouteIds });
+        }
+
+        /// <summary>
+        /// Gets the permissions assigned to a role. System administrators can access roles
+        /// from any company.
+        /// </summary>
+        [HttpGet("{id:int}/permissions")]
+        [ProducesResponseType(typeof(List<PermissionResponse>), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<List<PermissionResponse>>> GetPermissions(int id)
+        {
+            var roleQuery = _context.Roles.Where(r => r.Id == id);
+            if (!IsSystemAdmin())
+                roleQuery = roleQuery.Where(r => r.CompanyId == GetCompanyId());
+
+            var roleExists = await roleQuery.AnyAsync();
+            if (!roleExists)
+                return NotFound(new { message = "Rol no encontrado." });
+
+            var permissions = await _context.RolePermissions
+                .Where(rp => rp.RoleId == id && rp.IsActive)
+                .Include(rp => rp.Permission)
+                .Select(rp => new PermissionResponse
+                {
+                    Id = rp.Permission.Id,
+                    Key = rp.Permission.Key,
+                    Name = rp.Permission.Name,
+                    Description = rp.Permission.Description,
+                    WindowId = rp.Permission.WindowId,
+                    IsActive = rp.Permission.IsActive,
+                    IsDefaultForNewRoles = rp.Permission.IsDefaultForNewRoles
+                })
+                .OrderBy(p => p.WindowId).ThenBy(p => p.Name)
+                .ToListAsync();
+
+            return Ok(permissions);
+        }
+
+        /// <summary>
+        /// Assigns permissions to a role (e.g. lets a "Supervisor" role authorize cancelling
+        /// a sale). Replaces all current assignments. System administrators can manage roles
+        /// from any company.
+        /// </summary>
+        [HttpPost("{id:int}/permissions")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> AssignPermissions(int id, [FromBody] AssignPermissionsRequest request)
+        {
+            var currentUser = GetCurrentUsername();
+
+            var roleQuery = _context.Roles.Where(r => r.Id == id);
+            if (!IsSystemAdmin())
+                roleQuery = roleQuery.Where(r => r.CompanyId == GetCompanyId());
+
+            var role = await roleQuery.FirstOrDefaultAsync();
+            if (role is null)
+                return NotFound(new { message = "Rol no encontrado." });
+
+            // The permission catalog is global (not per-company), unlike routes.
+            var validPermissionIds = await _context.Permissions
+                .Where(p => request.PermissionIds.Contains(p.Id) && p.IsActive)
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            var existingAssignments = await _context.RolePermissions
+                .Where(rp => rp.RoleId == id)
+                .ToListAsync();
+
+            foreach (var assignment in existingAssignments)
+            {
+                assignment.IsActive = validPermissionIds.Contains(assignment.PermissionId);
+            }
+
+            var existingPermissionIds = existingAssignments.Select(a => a.PermissionId).ToHashSet();
+            foreach (var permissionId in validPermissionIds.Where(pid => !existingPermissionIds.Contains(pid)))
+            {
+                _context.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = id,
+                    PermissionId = permissionId,
+                    IsActive = true,
+                    CreatedAt = DateTimeHelper.Now,
+                    CreatedBy = currentUser
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Permissions assigned to role {RoleId}: {Count} permissions by {User}",
+                id, validPermissionIds.Count, currentUser);
+
+            return Ok(new { message = $"Se asignaron {validPermissionIds.Count} permisos correctamente.", permissionIds = validPermissionIds });
         }
 
         private static RoleResponse MapToResponse(Role role, List<int> routeIds)

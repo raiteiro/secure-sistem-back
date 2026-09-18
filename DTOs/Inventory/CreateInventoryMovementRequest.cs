@@ -16,7 +16,7 @@ namespace SecureSistem.DTOs.Inventory
         /// effect as "In" — they're just a more specific label for the movement's cause.
         /// </summary>
         [Required, RegularExpression("^(In|Out|Adjustment|Purchase|Sale|Return)$",
-            ErrorMessage = "Type must be 'In', 'Out', 'Adjustment', 'Purchase', 'Sale' or 'Return'.")]
+            ErrorMessage = "Type debe ser 'In', 'Out', 'Adjustment', 'Purchase', 'Sale' o 'Return'.")]
         public string Type { get; set; } = string.Empty;
 
         /// <summary>

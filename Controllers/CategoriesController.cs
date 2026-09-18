@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Categories;
 using SecureSistem.Models;
@@ -59,7 +60,7 @@ namespace SecureSistem.Controllers
             var category = await query.FirstOrDefaultAsync();
 
             if (category is null)
-                return NotFound(new { message = "Category not found." });
+                return NotFound(new { message = "Categoría no encontrada." });
 
             return Ok(MapToResponse(category));
         }
@@ -81,19 +82,19 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create categories in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear categorías en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             var nameExists = await _context.Categories
                 .AnyAsync(c => c.Name == request.Name && c.CompanyId == companyId && c.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A category with this name already exists." });
+                return BadRequest(new { message = "Ya existe una categoría con este nombre." });
 
             var category = new Category
             {
@@ -101,7 +102,7 @@ namespace SecureSistem.Controllers
                 Description = request.Description,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -132,16 +133,16 @@ namespace SecureSistem.Controllers
             var category = await query.FirstOrDefaultAsync();
 
             if (category is null)
-                return NotFound(new { message = "Category not found." });
+                return NotFound(new { message = "Categoría no encontrada." });
 
             var nameExists = await _context.Categories
                 .AnyAsync(c => c.Name == request.Name && c.CompanyId == category.CompanyId && c.Id != id && c.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A category with this name already exists." });
+                return BadRequest(new { message = "Ya existe una categoría con este nombre." });
 
             category.Name = request.Name;
             category.Description = request.Description;
-            category.ModifiedAt = DateTime.UtcNow;
+            category.ModifiedAt = DateTimeHelper.Now;
             category.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -170,22 +171,22 @@ namespace SecureSistem.Controllers
             var category = await query.FirstOrDefaultAsync();
 
             if (category is null)
-                return NotFound(new { message = "Category not found." });
+                return NotFound(new { message = "Categoría no encontrada." });
 
             var productsWithCategory = await _context.Products
                 .AnyAsync(p => p.CategoryId == id && p.IsActive);
             if (productsWithCategory)
-                return BadRequest(new { message = "Cannot deactivate category. There are active products assigned to it." });
+                return BadRequest(new { message = "No se puede desactivar la categoría. Hay productos activos asignados a ella." });
 
             category.IsActive = false;
-            category.ModifiedAt = DateTime.UtcNow;
+            category.ModifiedAt = DateTimeHelper.Now;
             category.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Category deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Category deactivated successfully." });
+            return Ok(new { message = "Categoría desactivada correctamente." });
         }
 
         private static CategoryResponse MapToResponse(Category category)

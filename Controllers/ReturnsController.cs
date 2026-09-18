@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Returns;
 using SecureSistem.Models;
@@ -68,7 +69,7 @@ namespace SecureSistem.Controllers
             var ret = await query.FirstOrDefaultAsync();
 
             if (ret is null)
-                return NotFound(new { message = "Return not found." });
+                return NotFound(new { message = "Devolución no encontrada." });
 
             return Ok(MapToResponse(ret));
         }
@@ -90,28 +91,28 @@ namespace SecureSistem.Controllers
 
             var sale = await _context.Sales.FirstOrDefaultAsync(s => s.Id == request.SaleId);
             if (sale is null)
-                return BadRequest(new { message = "Invalid sale." });
+                return BadRequest(new { message = "Venta inválida." });
 
             if (!IsSystemAdmin() && sale.CompanyId != GetCompanyId())
-                return StatusCode(403, new { message = "You can only return items from your own company's sales." });
+                return StatusCode(403, new { message = "Solo puedes procesar devoluciones de ventas de tu propia empresa." });
 
             if (sale.Status != "Completed")
-                return BadRequest(new { message = $"Cannot return items from a sale with status '{sale.Status}'." });
+                return BadRequest(new { message = $"No se pueden devolver artículos de una venta con estado '{sale.Status}'." });
 
             var session = await _context.CashSessions
                 .FirstOrDefaultAsync(s => s.Id == request.CashSessionId);
             if (session is null || session.ClosedAt is not null)
-                return BadRequest(new { message = "Cash session must be open." });
+                return BadRequest(new { message = "El turno de caja debe estar abierto." });
 
             if (session.UserId != userId)
-                return StatusCode(403, new { message = "You can only process returns against your own open cash session." });
+                return StatusCode(403, new { message = "Solo puedes procesar devoluciones contra tu propio turno de caja abierto." });
 
             if (session.CompanyId != sale.CompanyId)
-                return BadRequest(new { message = "Cash session must belong to the same company as the sale." });
+                return BadRequest(new { message = "El turno de caja debe pertenecer a la misma empresa que la venta." });
 
             var saleItemIds = request.Items.Select(i => i.SaleItemId).ToList();
             if (saleItemIds.Distinct().Count() != saleItemIds.Count)
-                return BadRequest(new { message = "Duplicate sale items in request." });
+                return BadRequest(new { message = "Hay artículos duplicados en la solicitud." });
 
             var saleItems = await _context.SaleItems
                 .Include(i => i.Product)
@@ -119,7 +120,7 @@ namespace SecureSistem.Controllers
                 .ToListAsync();
 
             if (saleItems.Count != saleItemIds.Count)
-                return BadRequest(new { message = "One or more items do not belong to this sale." });
+                return BadRequest(new { message = "Uno o más artículos no pertenecen a esta venta." });
 
             var saleItemsById = saleItems.ToDictionary(i => i.Id);
 
@@ -130,7 +131,7 @@ namespace SecureSistem.Controllers
                 .ToDictionaryAsync(g => g.SaleItemId, g => g.Quantity);
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
 
             var returnItems = new List<ReturnItem>();
             decimal subtotalRefunded = 0, taxRefunded = 0;
@@ -144,7 +145,7 @@ namespace SecureSistem.Controllers
                 if (itemRequest.Quantity > remaining)
                     return BadRequest(new
                     {
-                        message = $"Cannot return {itemRequest.Quantity} of '{saleItem.Product.Name}'. Remaining returnable quantity: {remaining}."
+                        message = $"No se pueden devolver {itemRequest.Quantity} de '{saleItem.Product.Name}'. Cantidad restante que se puede devolver: {remaining}."
                     });
 
                 var unitSubtotal = saleItem.Subtotal / saleItem.Quantity;

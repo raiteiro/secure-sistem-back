@@ -30,6 +30,14 @@ namespace SecureSistem.Models
 
         public DateTime? LastLoginAt { get; set; }
 
+        /// <summary>
+        /// UTC timestamp of the last authenticated API request this user made (stamped by
+        /// middleware, not shown to the user). Used to detect real inactivity — unlike a
+        /// refresh token's sliding expiration, this doesn't move just because the frontend
+        /// silently calls /auth/refresh in the background.
+        /// </summary>
+        public DateTime? LastSeenAt { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime? ModifiedAt { get; set; }

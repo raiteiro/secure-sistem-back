@@ -24,10 +24,10 @@ namespace SecureSistem.DTOs.Sales
         [Required]
         public int CashSessionId { get; set; }
 
-        [Required, MinLength(1, ErrorMessage = "At least one item is required.")]
+        [Required, MinLength(1, ErrorMessage = "Se requiere al menos un artículo.")]
         public List<CreateSaleItemRequest> Items { get; set; } = new();
 
-        [Required, MinLength(1, ErrorMessage = "At least one payment is required.")]
+        [Required, MinLength(1, ErrorMessage = "Se requiere al menos un pago.")]
         public List<CreateSalePaymentRequest> Payments { get; set; } = new();
     }
 }

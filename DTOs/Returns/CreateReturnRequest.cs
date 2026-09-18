@@ -19,13 +19,13 @@ namespace SecureSistem.DTOs.Returns
         /// expected cash amount.
         /// </summary>
         [Required, RegularExpression("^(Cash|Card|Other)$",
-            ErrorMessage = "RefundMethod must be 'Cash', 'Card' or 'Other'.")]
+            ErrorMessage = "RefundMethod debe ser 'Cash', 'Card' u 'Other'.")]
         public string RefundMethod { get; set; } = string.Empty;
 
         [MaxLength(500)]
         public string? Reason { get; set; }
 
-        [Required, MinLength(1, ErrorMessage = "At least one item is required.")]
+        [Required, MinLength(1, ErrorMessage = "Se requiere al menos un artículo.")]
         public List<CreateReturnItemRequest> Items { get; set; } = new();
     }
 }

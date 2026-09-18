@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Inventory;
 using SecureSistem.Models;
@@ -75,7 +76,7 @@ namespace SecureSistem.Controllers
             var movement = await query.FirstOrDefaultAsync();
 
             if (movement is null)
-                return NotFound(new { message = "Movement not found." });
+                return NotFound(new { message = "Movimiento no encontrado." });
 
             return Ok(MapToResponse(movement));
         }
@@ -95,28 +96,28 @@ namespace SecureSistem.Controllers
             var currentUser = GetCurrentUsername();
 
             if (request.Quantity == 0)
-                return BadRequest(new { message = "Quantity cannot be zero." });
+                return BadRequest(new { message = "La cantidad no puede ser cero." });
 
             if ((request.Type == "In" || request.Type == "Purchase" || request.Type == "Return") && request.Quantity < 0)
-                return BadRequest(new { message = $"'{request.Type}' movements require a positive quantity." });
+                return BadRequest(new { message = $"Los movimientos de tipo '{request.Type}' requieren una cantidad positiva." });
 
             if ((request.Type == "Out" || request.Type == "Sale") && request.Quantity > 0)
-                return BadRequest(new { message = $"'{request.Type}' movements require a negative quantity." });
+                return BadRequest(new { message = $"Los movimientos de tipo '{request.Type}' requieren una cantidad negativa." });
 
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == request.ProductId && p.IsActive);
             if (product is null)
-                return BadRequest(new { message = "Invalid product." });
+                return BadRequest(new { message = "Producto inválido." });
 
             if (!IsSystemAdmin() && product.CompanyId != GetCompanyId())
-                return StatusCode(403, new { message = "Only the system administrator can record movements for another company." });
+                return StatusCode(403, new { message = "Solo el administrador del sistema puede registrar movimientos para otra empresa." });
 
             var warehouse = await _context.Warehouses
                 .FirstOrDefaultAsync(w => w.Id == request.WarehouseId && w.CompanyId == product.CompanyId && w.IsActive);
             if (warehouse is null)
-                return BadRequest(new { message = "Warehouse must belong to the same company as the product." });
+                return BadRequest(new { message = "El almacén debe pertenecer a la misma empresa que el producto." });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
 
             var inventory = await _context.Inventories
                 .FirstOrDefaultAsync(i => i.ProductId == request.ProductId && i.WarehouseId == request.WarehouseId);
@@ -125,7 +126,7 @@ namespace SecureSistem.Controllers
             var resultingQuantity = currentQuantity + request.Quantity;
 
             if (resultingQuantity < 0)
-                return BadRequest(new { message = $"Insufficient stock. Current: {currentQuantity}, requested change: {request.Quantity}." });
+                return BadRequest(new { message = $"Stock insuficiente. Actual: {currentQuantity}, cambio solicitado: {request.Quantity}." });
 
             if (inventory is null)
             {

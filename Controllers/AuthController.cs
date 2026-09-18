@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Auth;
 using SecureSistem.Models;
@@ -59,53 +60,75 @@ namespace SecureSistem.Controllers
             {
                 _logger.LogWarning("Login failed: user '{Username}' not found",
                     request.Username);
-                return Unauthorized(new { message = "Invalid credentials." });
+                return Unauthorized(new { message = "Credenciales inválidas." });
             }
 
             if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             {
                 _logger.LogWarning("Login failed: invalid password for user '{Username}'", request.Username);
-                return Unauthorized(new { message = "Invalid credentials." });
+                return Unauthorized(new { message = "Credenciales inválidas." });
             }
 
-            if (!user.Company.IsActive)
+            // System administrators must always be able to get in to fix things, even if
+            // their own company got deactivated, its subscription lapsed, or it's at its
+            // concurrent-session limit.
+            if (!user.IsSystemAdmin)
             {
-                _logger.LogWarning("Login blocked: company '{Company}' is inactive", user.Company.Name);
-                return StatusCode(403, new { message = "Tu empresa ha sido desactivada. Contacta a soporte." });
-            }
-
-            if (user.Company.SubscriptionExpiresAt is not null
-                && user.Company.SubscriptionExpiresAt < DateTime.UtcNow)
-            {
-                _logger.LogWarning("Login blocked: company '{Company}' subscription expired",
-                    user.Company.Name);
-                return StatusCode(402, new
+                if (!user.Company.IsActive)
                 {
-                    message = "La suscripción de tu empresa ha vencido. Contacta a soporte para renovar tu plan."
-                });
-            }
+                    _logger.LogWarning("Login blocked: company '{Company}' is inactive", user.Company.Name);
+                    return StatusCode(403, new { message = "Tu empresa ha sido desactivada. Contacta a soporte." });
+                }
 
-            if (user.Company.MaxConcurrentSessions is not null)
-            {
-                var activeSessions = await _context.RefreshTokens
-                    .Where(rt => rt.User.CompanyId == user.CompanyId
-                        && rt.RevokedAt == null
-                        && rt.ExpiresAt > DateTime.UtcNow)
-                    .CountAsync();
-
-                if (activeSessions >= user.Company.MaxConcurrentSessions)
+                if (user.Company.SubscriptionExpiresAt is not null
+                    && user.Company.SubscriptionExpiresAt < DateTime.UtcNow)
                 {
-                    _logger.LogWarning("Login blocked: company '{Company}' reached max concurrent sessions ({Max})",
-                        user.Company.Name, user.Company.MaxConcurrentSessions);
-                    return StatusCode(403, new
+                    _logger.LogWarning("Login blocked: company '{Company}' subscription expired",
+                        user.Company.Name);
+                    return StatusCode(402, new
                     {
-                        message = "Se alcanzó el máximo de sesiones simultáneas permitidas para tu plan. Cierra sesión en otro dispositivo e intenta de nuevo."
+                        message = "La suscripción de tu empresa ha vencido. Contacta a soporte para renovar tu plan."
                     });
+                }
+
+                if (user.Company.MaxConcurrentSessions is not null)
+                {
+                    // Excludes this same user's own sessions: logging in always revokes them
+                    // (see below), so they can never block this user's own re-login.
+                    var inactivityCutoff = DateTime.UtcNow - GetInactivityTimeout();
+                    var activeSessions = await _context.RefreshTokens
+                        .Where(rt => rt.User.CompanyId == user.CompanyId
+                            && rt.UserId != user.Id
+                            && rt.RevokedAt == null
+                            && rt.ExpiresAt > DateTime.UtcNow
+                            && (rt.User.LastSeenAt == null || rt.User.LastSeenAt >= inactivityCutoff))
+                        .CountAsync();
+
+                    if (activeSessions >= user.Company.MaxConcurrentSessions)
+                    {
+                        _logger.LogWarning("Login blocked: company '{Company}' reached max concurrent sessions ({Max})",
+                            user.Company.Name, user.Company.MaxConcurrentSessions);
+                        return StatusCode(403, new
+                        {
+                            message = "Se alcanzó el máximo de sesiones simultáneas permitidas para tu plan. Cierra sesión en otro dispositivo e intenta de nuevo."
+                        });
+                    }
                 }
             }
 
-            // Update last login
-            user.LastLoginAt = DateTime.UtcNow;
+            // A user can only have one active session at a time: logging in anywhere revokes
+            // whatever was still active elsewhere, instead of letting old, unused logins pile
+            // up as "active" for the rest of their 7-day window.
+            var previousSessions = await _context.RefreshTokens
+                .Where(rt => rt.UserId == user.Id && rt.RevokedAt == null)
+                .ToListAsync();
+            foreach (var previousSession in previousSessions)
+                previousSession.RevokedAt = DateTime.UtcNow;
+
+            // Update last login — logging in always counts as activity, so a session never
+            // looks idle for the very first inactivity check right after it starts.
+            user.LastLoginAt = DateTimeHelper.Now;
+            user.LastSeenAt = DateTime.UtcNow;
 
             var refreshToken = new RefreshToken
             {
@@ -118,7 +141,7 @@ namespace SecureSistem.Controllers
 
             await _context.SaveChangesAsync();
 
-            var token = _tokenService.GenerateToken(user, user.Role.Name, user.Company.Name);
+            var token = _tokenService.GenerateToken(user, user.Role.Name, user.Company.Name, refreshToken.Id);
             var expiration = _tokenService.GetExpiration();
 
             _logger.LogInformation("User '{Username}' logged in successfully", user.Username);
@@ -166,25 +189,43 @@ namespace SecureSistem.Controllers
             if (storedToken is null || !storedToken.IsActive || !storedToken.User.IsActive)
             {
                 _logger.LogWarning("Refresh token failed: token not found, expired, revoked or user inactive");
-                return Unauthorized(new { message = "Invalid or expired refresh token." });
+                return Unauthorized(new { message = "El token de renovación es inválido o expiró." });
             }
 
             var user = storedToken.User;
 
-            if (!user.Company.IsActive)
+            if (!user.IsSystemAdmin)
             {
-                _logger.LogWarning("Refresh blocked: company '{Company}' is inactive", user.Company.Name);
-                return StatusCode(403, new { message = "Tu empresa ha sido desactivada. Contacta a soporte." });
-            }
-
-            if (user.Company.SubscriptionExpiresAt is not null
-                && user.Company.SubscriptionExpiresAt < DateTime.UtcNow)
-            {
-                _logger.LogWarning("Refresh blocked: company '{Company}' subscription expired", user.Company.Name);
-                return StatusCode(402, new
+                if (!user.Company.IsActive)
                 {
-                    message = "La suscripción de tu empresa ha vencido. Contacta a soporte para renovar tu plan."
-                });
+                    _logger.LogWarning("Refresh blocked: company '{Company}' is inactive", user.Company.Name);
+                    return StatusCode(403, new { message = "Tu empresa ha sido desactivada. Contacta a soporte." });
+                }
+
+                if (user.Company.SubscriptionExpiresAt is not null
+                    && user.Company.SubscriptionExpiresAt < DateTime.UtcNow)
+                {
+                    _logger.LogWarning("Refresh blocked: company '{Company}' subscription expired", user.Company.Name);
+                    return StatusCode(402, new
+                    {
+                        message = "La suscripción de tu empresa ha vencido. Contacta a soporte para renovar tu plan."
+                    });
+                }
+
+                // A refresh token keeps sliding forward on its own as long as something keeps
+                // calling this endpoint, even with no real user activity behind it. LastSeenAt
+                // only moves on genuine authenticated requests (see the middleware in
+                // Program.cs), so this catches a session that's been truly idle for a while,
+                // independent of how many silent refreshes happened in the background.
+                if (user.LastSeenAt is not null && DateTime.UtcNow - user.LastSeenAt.Value > GetInactivityTimeout())
+                {
+                    storedToken.RevokedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("Refresh blocked: user '{Username}' session idle since {LastSeenAt}",
+                        user.Username, user.LastSeenAt);
+                    return Unauthorized(new { message = "Tu sesión expiró por inactividad. Inicia sesión de nuevo." });
+                }
             }
 
             var newRefreshToken = new RefreshToken
@@ -199,10 +240,13 @@ namespace SecureSistem.Controllers
             storedToken.ReplacedByToken = newRefreshToken.Token;
             _context.RefreshTokens.Add(newRefreshToken);
 
-            var accessToken = _tokenService.GenerateToken(user, user.Role.Name, user.Company.Name);
-            var expiration = _tokenService.GetExpiration();
-
             await _context.SaveChangesAsync();
+
+            // newRefreshToken.Id is only populated after SaveChangesAsync assigns its identity
+            // value, so token generation has to happen after — the access token is tagged with
+            // this session's id (see the middleware in Program.cs).
+            var accessToken = _tokenService.GenerateToken(user, user.Role.Name, user.Company.Name, newRefreshToken.Id);
+            var expiration = _tokenService.GetExpiration();
 
             return Ok(new LoginResponse
             {
@@ -245,7 +289,7 @@ namespace SecureSistem.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            return Ok(new { message = "Logged out successfully." });
+            return Ok(new { message = "Sesión cerrada correctamente." });
         }
 
         /// <summary>
@@ -308,13 +352,13 @@ namespace SecureSistem.Controllers
                 .FirstOrDefaultAsync(t => t.Token == request.Token);
 
             if (resetToken is null || !resetToken.IsActive || !resetToken.User.IsActive)
-                return BadRequest(new { message = "Invalid or expired reset token." });
+                return BadRequest(new { message = "El token de restablecimiento es inválido o expiró." });
 
             var user = resetToken.User;
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             user.MustChangePassword = false;
-            user.ModifiedAt = DateTime.UtcNow;
+            user.ModifiedAt = DateTimeHelper.Now;
             user.ModifiedBy = user.Username;
 
             resetToken.UsedAt = DateTime.UtcNow;
@@ -329,10 +373,16 @@ namespace SecureSistem.Controllers
 
             _logger.LogInformation("Password reset completed for user '{Username}'", user.Username);
 
-            return Ok(new { message = "Password reset successfully." });
+            return Ok(new { message = "Contraseña restablecida correctamente." });
         }
 
         private static string GenerateSecureToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+
+        private TimeSpan GetInactivityTimeout()
+        {
+            var hours = double.Parse(_configuration["Jwt:InactivityTimeoutHours"] ?? "24");
+            return TimeSpan.FromHours(hours);
+        }
 
         /// <summary>
         /// Returns the current authenticated user's info.
@@ -394,18 +444,18 @@ namespace SecureSistem.Controllers
                 return Unauthorized();
 
             if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
-                return BadRequest(new { message = "Current password is incorrect." });
+                return BadRequest(new { message = "La contraseña actual es incorrecta." });
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             user.MustChangePassword = false;
-            user.ModifiedAt = DateTime.UtcNow;
+            user.ModifiedAt = DateTimeHelper.Now;
             user.ModifiedBy = user.Username;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("User '{Username}' changed their password", user.Username);
 
-            return Ok(new { message = "Password changed successfully." });
+            return Ok(new { message = "Contraseña cambiada correctamente." });
         }
     }
 }

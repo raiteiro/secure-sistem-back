@@ -1,8 +1,11 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Sales;
 using SecureSistem.Models;
+using SecureSistem.Services;
 
 namespace SecureSistem.Controllers
 {
@@ -16,11 +19,13 @@ namespace SecureSistem.Controllers
     public class SalesController : BaseApiController
     {
         private readonly ApplicationDbContext _context;
+        private readonly IEmailService _emailService;
         private readonly ILogger<SalesController> _logger;
 
-        public SalesController(ApplicationDbContext context, ILogger<SalesController> logger)
+        public SalesController(ApplicationDbContext context, IEmailService emailService, ILogger<SalesController> logger)
         {
             _context = context;
+            _emailService = emailService;
             _logger = logger;
         }
 
@@ -30,10 +35,15 @@ namespace SecureSistem.Controllers
         /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(List<SaleResponse>), 200)]
+        [ProducesResponseType(400)]
         public async Task<ActionResult<List<SaleResponse>>> GetAll(
             [FromQuery] int? branchId, [FromQuery] int? customerId,
-            [FromQuery] int? cashSessionId, [FromQuery] string? status)
+            [FromQuery] int? cashSessionId, [FromQuery] string? status,
+            [FromQuery] DateTime? from, [FromQuery] DateTime? to)
         {
+            if (from is not null && to is not null && from.Value.Date > to.Value.Date)
+                return BadRequest(new { message = "La fecha 'from' no puede ser posterior a 'to'." });
+
             var query = BaseQuery();
 
             if (!IsSystemAdmin())
@@ -50,6 +60,12 @@ namespace SecureSistem.Controllers
 
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(s => s.Status == status);
+
+            if (from is not null)
+                query = query.Where(s => s.CreatedAt >= from.Value.Date);
+
+            if (to is not null)
+                query = query.Where(s => s.CreatedAt < to.Value.Date.AddDays(1));
 
             var sales = await query
                 .OrderByDescending(s => s.CreatedAt)
@@ -74,7 +90,7 @@ namespace SecureSistem.Controllers
             var sale = await query.FirstOrDefaultAsync();
 
             if (sale is null)
-                return NotFound(new { message = "Sale not found." });
+                return NotFound(new { message = "Venta no encontrada." });
 
             return Ok(MapToResponse(sale));
         }
@@ -96,31 +112,31 @@ namespace SecureSistem.Controllers
             var session = await _context.CashSessions
                 .FirstOrDefaultAsync(s => s.Id == request.CashSessionId);
             if (session is null || session.ClosedAt is not null)
-                return BadRequest(new { message = "Cash session must be open." });
+                return BadRequest(new { message = "El turno de caja debe estar abierto." });
 
             if (session.UserId != userId)
-                return StatusCode(403, new { message = "You can only ring up sales against your own open cash session." });
+                return StatusCode(403, new { message = "Solo puedes registrar ventas contra tu propio turno de caja abierto." });
 
             var companyId = session.CompanyId;
             if (!IsSystemAdmin() && companyId != GetCompanyId())
-                return StatusCode(403, new { message = "You can only ring up sales for your own company." });
+                return StatusCode(403, new { message = "Solo puedes registrar ventas para tu propia empresa." });
 
             var branch = await _context.Branches
                 .FirstOrDefaultAsync(b => b.Id == request.BranchId && b.CompanyId == companyId && b.IsActive);
             if (branch is null)
-                return BadRequest(new { message = "Branch must belong to the same company as the cash session." });
+                return BadRequest(new { message = "La sucursal debe pertenecer a la misma empresa que el turno de caja." });
 
             var warehouse = await _context.Warehouses
                 .FirstOrDefaultAsync(w => w.Id == request.WarehouseId && w.CompanyId == companyId && w.IsActive);
             if (warehouse is null)
-                return BadRequest(new { message = "Warehouse must belong to the same company." });
+                return BadRequest(new { message = "El almacén debe pertenecer a la misma empresa." });
 
             if (request.CustomerId is not null)
             {
                 var customerValid = await _context.Customers
                     .AnyAsync(c => c.Id == request.CustomerId && c.CompanyId == companyId && c.IsActive);
                 if (!customerValid)
-                    return BadRequest(new { message = "Customer must belong to the same company." });
+                    return BadRequest(new { message = "El cliente debe pertenecer a la misma empresa." });
             }
 
             var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
@@ -130,12 +146,12 @@ namespace SecureSistem.Controllers
                 .ToListAsync();
 
             if (products.Count != productIds.Count)
-                return BadRequest(new { message = "One or more products are invalid." });
+                return BadRequest(new { message = "Uno o más productos no son válidos." });
 
             var productsById = products.ToDictionary(p => p.Id);
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
 
             var saleItems = new List<SaleItem>();
             decimal subtotal = 0, discountTotal = 0, taxTotal = 0;
@@ -146,7 +162,7 @@ namespace SecureSistem.Controllers
                 var lineGross = itemRequest.Quantity * product.Price;
 
                 if (itemRequest.DiscountAmount > lineGross)
-                    return BadRequest(new { message = $"Discount cannot exceed the line total for product '{product.Name}'." });
+                    return BadRequest(new { message = $"El descuento no puede exceder el total de la línea para el producto '{product.Name}'." });
 
                 var lineSubtotal = lineGross - itemRequest.DiscountAmount;
                 var taxRateValue = product.TaxRate?.Rate ?? 0m;
@@ -178,7 +194,7 @@ namespace SecureSistem.Controllers
                 if (resultingQuantity < 0)
                     return BadRequest(new
                     {
-                        message = $"Insufficient stock for product '{product.Name}'. Available: {currentQuantity}, requested: {itemRequest.Quantity}."
+                        message = $"Stock insuficiente para el producto '{product.Name}'. Disponible: {currentQuantity}, solicitado: {itemRequest.Quantity}."
                     });
 
                 if (inventory is null)
@@ -219,7 +235,7 @@ namespace SecureSistem.Controllers
 
             var paymentsTotal = request.Payments.Sum(p => p.Amount);
             if (paymentsTotal != total)
-                return BadRequest(new { message = $"Payments must total exactly {total}, got {paymentsTotal}." });
+                return BadRequest(new { message = $"Los pagos deben sumar exactamente {total}, se recibió {paymentsTotal}." });
 
             var folioNumber = 1 + await _context.Sales
                 .Where(s => s.CompanyId == companyId)
@@ -291,20 +307,20 @@ namespace SecureSistem.Controllers
             var sale = await query.FirstOrDefaultAsync();
 
             if (sale is null)
-                return NotFound(new { message = "Sale not found." });
+                return NotFound(new { message = "Venta no encontrada." });
 
             if (sale.Status != "Completed")
-                return BadRequest(new { message = $"This sale is already '{sale.Status}'." });
+                return BadRequest(new { message = $"Esta venta ya está '{sale.Status}'." });
 
             if (sale.CashSession.ClosedAt is not null)
-                return BadRequest(new { message = "Cannot cancel a sale whose cash session is already closed. Use a return instead." });
+                return BadRequest(new { message = "No se puede cancelar una venta cuyo turno de caja ya está cerrado. Usa una devolución en su lugar." });
 
             var hasReturns = await _context.Returns.AnyAsync(r => r.SaleId == sale.Id);
             if (hasReturns)
-                return BadRequest(new { message = "Cannot cancel a sale that already has returns. Use a return for any remaining items." });
+                return BadRequest(new { message = "No se puede cancelar una venta que ya tiene devoluciones. Usa una devolución para lo que quede pendiente." });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
 
             foreach (var item in sale.Items)
             {
@@ -360,6 +376,137 @@ namespace SecureSistem.Controllers
                 sale.Id, sale.FolioNumber, currentUser);
 
             return Ok(MapToResponse(updated));
+        }
+
+        /// <summary>
+        /// Gets a print-ready receipt for a sale: the full sale detail plus the company
+        /// header (name, tax id, address, phone, logo) needed for a ticket that SaleResponse
+        /// doesn't carry.
+        /// </summary>
+        [HttpGet("{id:int}/receipt")]
+        [ProducesResponseType(typeof(ReceiptResponse), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<ReceiptResponse>> GetReceipt(int id)
+        {
+            var query = BaseQuery().Include(s => s.Company).Where(s => s.Id == id);
+
+            if (!IsSystemAdmin())
+                query = query.Where(s => s.CompanyId == GetCompanyId());
+
+            var sale = await query.FirstOrDefaultAsync();
+
+            if (sale is null)
+                return NotFound(new { message = "Venta no encontrada." });
+
+            return Ok(MapToReceipt(sale));
+        }
+
+        /// <summary>
+        /// Emails the receipt to the sale's customer, or to an explicit address if one is
+        /// given (required when the sale has no customer, or the customer has no email).
+        /// </summary>
+        [HttpPost("{id:int}/send-receipt")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(502)]
+        public async Task<IActionResult> SendReceipt(int id, [FromBody] SendReceiptRequest request)
+        {
+            var query = BaseQuery().Include(s => s.Company).Where(s => s.Id == id);
+
+            if (!IsSystemAdmin())
+                query = query.Where(s => s.CompanyId == GetCompanyId());
+
+            var sale = await query.FirstOrDefaultAsync();
+
+            if (sale is null)
+                return NotFound(new { message = "Venta no encontrada." });
+
+            var email = request.Email ?? sale.Customer?.Email;
+            if (string.IsNullOrWhiteSpace(email))
+                return BadRequest(new { message = "No hay un correo disponible: proporciona uno, o vincula un cliente con correo registrado." });
+
+            var receipt = MapToReceipt(sale);
+            var body = BuildReceiptEmailBody(receipt);
+
+            try
+            {
+                await _emailService.SendAsync(email, $"Recibo de tu compra - Folio {sale.FolioNumber}", body);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send receipt email for sale {Id}", sale.Id);
+                return StatusCode(502, new { message = "No se pudo enviar el recibo por correo. Intenta de nuevo más tarde." });
+            }
+
+            _logger.LogInformation("Receipt sent: sale {Id} (folio {Folio}) to {Email}", sale.Id, sale.FolioNumber, email);
+
+            return Ok(new { message = $"Recibo enviado a {email}." });
+        }
+
+        private static ReceiptResponse MapToReceipt(Sale sale)
+        {
+            var response = MapToResponse(sale);
+            return new ReceiptResponse
+            {
+                SaleId = sale.Id,
+                FolioNumber = sale.FolioNumber,
+                CreatedAt = sale.CreatedAt,
+                Status = sale.Status,
+                CompanyName = sale.Company.Name,
+                CompanyTaxId = sale.Company.TaxId,
+                CompanyAddress = sale.Company.Address,
+                CompanyPhone = sale.Company.Phone,
+                CompanyLogoPath = sale.Company.LogoPath,
+                BranchName = sale.Branch.Name,
+                CashierUsername = sale.User.Username,
+                CustomerName = sale.Customer?.Name,
+                CustomerEmail = sale.Customer?.Email,
+                Items = response.Items,
+                Payments = response.Payments,
+                Subtotal = sale.Subtotal,
+                DiscountTotal = sale.DiscountTotal,
+                TaxTotal = sale.TaxTotal,
+                Total = sale.Total
+            };
+        }
+
+        private static string BuildReceiptEmailBody(ReceiptResponse receipt)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine(receipt.CompanyName);
+            if (!string.IsNullOrWhiteSpace(receipt.CompanyTaxId)) sb.AppendLine(receipt.CompanyTaxId);
+            if (!string.IsNullOrWhiteSpace(receipt.CompanyAddress)) sb.AppendLine(receipt.CompanyAddress);
+            if (!string.IsNullOrWhiteSpace(receipt.CompanyPhone)) sb.AppendLine(receipt.CompanyPhone);
+            sb.AppendLine();
+            sb.AppendLine($"Folio: {receipt.FolioNumber}");
+            sb.AppendLine($"Fecha: {receipt.CreatedAt:yyyy-MM-dd HH:mm}");
+            sb.AppendLine($"Sucursal: {receipt.BranchName}");
+            sb.AppendLine($"Atendió: {receipt.CashierUsername}");
+            if (!string.IsNullOrWhiteSpace(receipt.CustomerName)) sb.AppendLine($"Cliente: {receipt.CustomerName}");
+            sb.AppendLine();
+
+            foreach (var item in receipt.Items)
+            {
+                sb.AppendLine($"{item.Quantity} x {item.ProductName} @ {item.UnitPrice:0.00} = {item.Total:0.00}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine($"Subtotal: {receipt.Subtotal:0.00}");
+            if (receipt.DiscountTotal > 0) sb.AppendLine($"Descuento: -{receipt.DiscountTotal:0.00}");
+            sb.AppendLine($"Impuestos: {receipt.TaxTotal:0.00}");
+            sb.AppendLine($"Total: {receipt.Total:0.00}");
+            sb.AppendLine();
+
+            foreach (var payment in receipt.Payments)
+            {
+                sb.AppendLine($"Pago ({payment.Method}): {payment.Amount:0.00}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("¡Gracias por tu compra!");
+
+            return sb.ToString();
         }
 
         private IQueryable<Sale> BaseQuery()

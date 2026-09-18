@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.NavigationRoutes;
 using SecureSistem.Models;
@@ -137,7 +138,7 @@ namespace SecureSistem.Controllers
             var route = await query.FirstOrDefaultAsync();
 
             if (route is null)
-                return NotFound(new { message = "Route not found." });
+                return NotFound(new { message = "Ruta no encontrada." });
 
             return Ok(MapToResponse(route));
         }
@@ -160,21 +161,21 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create routes in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear rutas en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             if (request.ParentId is not null)
             {
                 var parentInSameCompany = await _context.NavigationRoutes
                     .AnyAsync(r => r.Id == request.ParentId && r.CompanyId == companyId);
                 if (!parentInSameCompany)
-                    return BadRequest(new { message = "Parent route must belong to the same target company." });
+                    return BadRequest(new { message = "La ruta padre debe pertenecer a la empresa destino." });
             }
 
             var route = new NavigationRoute
@@ -188,7 +189,7 @@ namespace SecureSistem.Controllers
                 SortOrder = request.SortOrder,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -220,14 +221,14 @@ namespace SecureSistem.Controllers
             var route = await query.FirstOrDefaultAsync();
 
             if (route is null)
-                return NotFound(new { message = "Route not found." });
+                return NotFound(new { message = "Ruta no encontrada." });
 
             if (request.ParentId is not null)
             {
                 var parentInSameCompany = await _context.NavigationRoutes
                     .AnyAsync(r => r.Id == request.ParentId && r.CompanyId == route.CompanyId);
                 if (!parentInSameCompany)
-                    return BadRequest(new { message = "Parent route must belong to the same company." });
+                    return BadRequest(new { message = "La ruta padre debe pertenecer a la misma empresa." });
             }
 
             route.ParentId = request.ParentId;
@@ -238,7 +239,7 @@ namespace SecureSistem.Controllers
             route.Level = request.Level;
             route.SortOrder = request.SortOrder;
             route.IsActive = request.IsActive;
-            route.ModifiedAt = DateTime.UtcNow;
+            route.ModifiedAt = DateTimeHelper.Now;
             route.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -267,17 +268,17 @@ namespace SecureSistem.Controllers
             var route = await query.FirstOrDefaultAsync();
 
             if (route is null)
-                return NotFound(new { message = "Route not found." });
+                return NotFound(new { message = "Ruta no encontrada." });
 
             route.IsActive = false;
-            route.ModifiedAt = DateTime.UtcNow;
+            route.ModifiedAt = DateTimeHelper.Now;
             route.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Navigation route deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Navigation route deactivated successfully." });
+            return Ok(new { message = "Ruta de navegación desactivada correctamente." });
         }
 
         private static NavigationRouteResponse MapToResponse(NavigationRoute route)

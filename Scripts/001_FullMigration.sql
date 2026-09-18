@@ -1619,3 +1619,185 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916143000_AddUserLastSeenAt'
+)
+BEGIN
+    ALTER TABLE [Users] ADD [LastSeenAt] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916143000_AddUserLastSeenAt'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260916143000_AddUserLastSeenAt', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    CREATE TABLE [Permissions] (
+        [Id] int NOT NULL IDENTITY,
+        [Key] nvarchar(100) NOT NULL,
+        [Name] nvarchar(150) NOT NULL,
+        [Description] nvarchar(max) NULL,
+        [WindowId] nvarchar(100) NULL,
+        [IsActive] bit NOT NULL,
+        [IsDefaultForNewRoles] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_Permissions] PRIMARY KEY ([Id])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    CREATE TABLE [RolePermissions] (
+        [Id] int NOT NULL IDENTITY,
+        [RoleId] int NOT NULL,
+        [PermissionId] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_RolePermissions] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_RolePermissions_Permissions_PermissionId] FOREIGN KEY ([PermissionId]) REFERENCES [Permissions] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_RolePermissions_Roles_RoleId] FOREIGN KEY ([RoleId]) REFERENCES [Roles] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_Permissions_Key] ON [Permissions] ([Key]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    CREATE INDEX [IX_RolePermissions_PermissionId] ON [RolePermissions] ([PermissionId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_RolePermissions_RoleId_PermissionId] ON [RolePermissions] ([RoleId], [PermissionId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    IF EXISTS (SELECT * FROM [sys].[identity_columns] WHERE [name] IN (N'Key', N'Name', N'Description', N'WindowId', N'IsActive', N'IsDefaultForNewRoles', N'CreatedAt', N'CreatedBy') AND [object_id] = OBJECT_ID(N'[Permissions]'))
+        SET IDENTITY_INSERT [Permissions] ON;
+    EXEC(N'INSERT INTO [Permissions] ([Key], [Name], [Description], [WindowId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+    VALUES (N''USERS.CREATE'', N''Crear usuario'', NULL, N''win-users'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''USERS.EDIT'', N''Editar usuario'', NULL, N''win-users'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''USERS.DEACTIVATE'', N''Desactivar usuario'', NULL, N''win-users'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''USERS.RESET_PASSWORD'', N''Restablecer contraseña'', NULL, N''win-users'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''USERS.REASSIGN_COMPANY'', N''Cambiar de empresa'', NULL, N''win-users'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''NAV_ROUTES.CREATE'', N''Crear ruta'', NULL, N''win-routes'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''NAV_ROUTES.EDIT'', N''Editar ruta'', NULL, N''win-routes'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''NAV_ROUTES.DEACTIVATE'', N''Desactivar ruta'', NULL, N''win-routes'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''ROLES.CREATE'', N''Crear rol'', NULL, N''win-roles'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''ROLES.EDIT'', N''Editar rol'', NULL, N''win-roles'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''ROLES.DEACTIVATE'', N''Desactivar rol'', NULL, N''win-roles'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''ROLES.ASSIGN_ROUTES'', N''Asignar ventanas al rol'', NULL, N''win-roles'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''COMPANIES.CREATE'', N''Crear empresa'', NULL, N''win-company'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''COMPANIES.EDIT'', N''Editar empresa'', NULL, N''win-company'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''COMPANIES.DEACTIVATE'', N''Desactivar empresa'', NULL, N''win-company'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''COMPANIES.UPLOAD_LOGO'', N''Subir/cambiar logo'', NULL, N''win-company'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''BRANCHES.CREATE'', N''Crear sucursal'', NULL, N''win-branches'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''BRANCHES.EDIT'', N''Editar sucursal'', NULL, N''win-branches'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''BRANCHES.DEACTIVATE'', N''Desactivar sucursal'', NULL, N''win-branches'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''WAREHOUSES.CREATE'', N''Crear almacén'', NULL, N''win-warehouses'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''WAREHOUSES.EDIT'', N''Editar almacén'', NULL, N''win-warehouses'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''WAREHOUSES.DEACTIVATE'', N''Desactivar almacén'', NULL, N''win-warehouses'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''WAREHOUSES.ADD_PRODUCT'', N''Agregar producto al almacén'', NULL, N''win-warehouses'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''WAREHOUSES.EDIT_MIN_STOCK'', N''Editar stock mínimo'', NULL, N''win-warehouses'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''WAREHOUSES.REGISTER_MOVEMENT'', N''Registrar movimiento de inventario'', NULL, N''win-warehouses'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''TAX_RATES.CREATE'', N''Crear impuesto'', NULL, N''win-taxrates'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''TAX_RATES.EDIT'', N''Editar impuesto'', NULL, N''win-taxrates'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''TAX_RATES.DEACTIVATE'', N''Desactivar impuesto'', NULL, N''win-taxrates'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CATEGORIES.CREATE'', N''Crear categoría'', NULL, N''win-categories'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CATEGORIES.EDIT'', N''Editar categoría'', NULL, N''win-categories'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CATEGORIES.DEACTIVATE'', N''Desactivar categoría'', NULL, N''win-categories'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''PRODUCTS.CREATE'', N''Crear producto'', NULL, N''win-products'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''PRODUCTS.EDIT'', N''Editar producto'', NULL, N''win-products'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''PRODUCTS.DEACTIVATE'', N''Desactivar producto'', NULL, N''win-products'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CUSTOMERS.CREATE'', N''Crear cliente'', NULL, N''win-customers'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CUSTOMERS.EDIT'', N''Editar cliente'', NULL, N''win-customers'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CUSTOMERS.DEACTIVATE'', N''Desactivar cliente'', NULL, N''win-customers'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CASH_REGISTERS.CREATE'', N''Crear caja'', NULL, N''win-cashregisters'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CASH_REGISTERS.EDIT'', N''Editar caja'', NULL, N''win-cashregisters'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CASH_REGISTERS.DEACTIVATE'', N''Desactivar caja'', NULL, N''win-cashregisters'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CASH_SESSIONS.OPEN'', N''Abrir turno'', NULL, N''win-cashsessions'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''CASH_SESSIONS.CLOSE'', N''Cerrar turno'', NULL, N''win-cashsessions'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system'');
+    INSERT INTO [Permissions] ([Key], [Name], [Description], [WindowId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+    VALUES (N''SALES.REGISTER'', N''Registrar venta'', NULL, N''win-sales'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''SALES.CANCEL'', N''Cancelar venta'', NULL, N''win-sales'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''SALES.SEND_RECEIPT'', N''Enviar recibo por correo'', NULL, N''win-sales'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system''),
+    (N''RETURNS.REGISTER'', N''Registrar devolución'', NULL, N''win-returns'', CAST(1 AS bit), CAST(1 AS bit), ''2026-09-16T00:00:00.0000000'', N''system'')');
+    IF EXISTS (SELECT * FROM [sys].[identity_columns] WHERE [name] IN (N'Key', N'Name', N'Description', N'WindowId', N'IsActive', N'IsDefaultForNewRoles', N'CreatedAt', N'CreatedBy') AND [object_id] = OBJECT_ID(N'[Permissions]'))
+        SET IDENTITY_INSERT [Permissions] OFF;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+
+                    INSERT INTO RolePermissions (RoleId, PermissionId, IsActive, CreatedAt, CreatedBy)
+                    SELECT r.Id, p.Id, 1, GETDATE(), N'system'
+                    FROM Roles r
+                    CROSS JOIN Permissions p
+                    WHERE r.IsActive = 1 AND p.IsDefaultForNewRoles = 1;
+                
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260916165628_AddPermissions'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260916165628_AddPermissions', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+

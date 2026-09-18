@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.CashSessions;
 using SecureSistem.Models;
@@ -74,7 +75,7 @@ namespace SecureSistem.Controllers
                 .FirstOrDefaultAsync(s => s.UserId == userId && s.ClosedAt == null);
 
             if (session is null)
-                return NotFound(new { message = "No open cash session." });
+                return NotFound(new { message = "No hay un turno de caja abierto." });
 
             return Ok(MapToResponse(session));
         }
@@ -98,7 +99,7 @@ namespace SecureSistem.Controllers
             var session = await query.FirstOrDefaultAsync();
 
             if (session is null)
-                return NotFound(new { message = "Session not found." });
+                return NotFound(new { message = "Turno no encontrado." });
 
             return Ok(MapToResponse(session));
         }
@@ -120,22 +121,22 @@ namespace SecureSistem.Controllers
             var register = await _context.CashRegisters
                 .FirstOrDefaultAsync(r => r.Id == request.CashRegisterId && r.IsActive);
             if (register is null)
-                return BadRequest(new { message = "Invalid cash register." });
+                return BadRequest(new { message = "Caja inválida." });
 
             if (!IsSystemAdmin() && register.CompanyId != GetCompanyId())
-                return StatusCode(403, new { message = "You can only open a session on your own company's cash register." });
+                return StatusCode(403, new { message = "Solo puedes abrir un turno en una caja de tu propia empresa." });
 
             var registerHasOpenSession = await _context.CashSessions
                 .AnyAsync(s => s.CashRegisterId == request.CashRegisterId && s.ClosedAt == null);
             if (registerHasOpenSession)
-                return BadRequest(new { message = "This cash register already has an open session." });
+                return BadRequest(new { message = "Esta caja ya tiene un turno abierto." });
 
             var userHasOpenSession = await _context.CashSessions
                 .AnyAsync(s => s.UserId == userId && s.ClosedAt == null);
             if (userHasOpenSession)
-                return BadRequest(new { message = "You already have an open cash session. Close it before opening another." });
+                return BadRequest(new { message = "Ya tienes un turno de caja abierto. Ciérralo antes de abrir otro." });
 
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
             var session = new CashSession
             {
                 CashRegisterId = request.CashRegisterId,
@@ -177,10 +178,10 @@ namespace SecureSistem.Controllers
             var session = await query.FirstOrDefaultAsync();
 
             if (session is null)
-                return NotFound(new { message = "Session not found." });
+                return NotFound(new { message = "Turno no encontrado." });
 
             if (session.ClosedAt is not null)
-                return BadRequest(new { message = "This session is already closed." });
+                return BadRequest(new { message = "Este turno ya está cerrado." });
 
             var cashSalesTotal = await _context.Payments
                 .Where(p => p.Method == "Cash" && p.Sale.CashSessionId == session.Id && p.Sale.Status != "Cancelled")
@@ -193,9 +194,9 @@ namespace SecureSistem.Controllers
             session.ClosingAmount = request.ClosingAmount;
             session.ExpectedAmount = expectedAmount;
             session.Difference = request.ClosingAmount - expectedAmount;
-            session.ClosedAt = DateTime.UtcNow;
+            session.ClosedAt = DateTimeHelper.Now;
             session.Notes = request.Notes;
-            session.ModifiedAt = DateTime.UtcNow;
+            session.ModifiedAt = DateTimeHelper.Now;
             session.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();

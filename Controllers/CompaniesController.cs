@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Companies;
 using SecureSistem.Models;
@@ -96,11 +97,11 @@ namespace SecureSistem.Controllers
         public async Task<ActionResult<CompanyResponse>> GetById(int id)
         {
             if (!IsSystemAdmin() && id != GetCompanyId())
-                return NotFound(new { message = "Company not found." });
+                return NotFound(new { message = "Empresa no encontrada." });
 
             var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
             if (company is null)
-                return NotFound(new { message = "Company not found." });
+                return NotFound(new { message = "Empresa no encontrada." });
 
             return Ok(await MapToResponseAsync(company));
         }
@@ -118,17 +119,17 @@ namespace SecureSistem.Controllers
         public async Task<ActionResult<CompanyResponse>> Create([FromBody] CreateCompanyRequest request)
         {
             if (!IsSystemAdmin())
-                return StatusCode(403, new { message = "Only the system administrator can create companies." });
+                return StatusCode(403, new { message = "Solo el administrador del sistema puede crear empresas." });
 
             var currentUser = GetCurrentUsername();
 
             var nameExists = await _context.Companies.AnyAsync(c => c.Name == request.Name && c.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A company with this name already exists." });
+                return BadRequest(new { message = "Ya existe una empresa con este nombre." });
 
             var slug = Regex.Replace(request.Name, "[^a-zA-Z0-9]", "").ToLowerInvariant();
             if (slug.Length == 0)
-                return BadRequest(new { message = "Company name must contain at least one letter or digit." });
+                return BadRequest(new { message = "El nombre de la empresa debe contener al menos una letra o dígito." });
 
             var adminUsername = $"admin{slug}";
             var adminEmail = $"{adminUsername}@{slug}.local";
@@ -136,11 +137,11 @@ namespace SecureSistem.Controllers
             if (emailExists)
                 return BadRequest(new
                 {
-                    message = "Could not generate a unique default admin account for this company name. Try a more distinct name."
+                    message = "No se pudo generar una cuenta de administrador por defecto única para este nombre de empresa. Intenta con un nombre más distintivo."
                 });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
 
             var company = new Company
             {
@@ -352,9 +353,20 @@ namespace SecureSistem.Controllers
             _context.NavigationRoutes.Add(returns);
             await _context.SaveChangesAsync();
 
+            // Reporting screen: also a single page, next to "Devoluciones".
+            var reports = new NavigationRoute
+            {
+                WindowName = "Reportes", RoutePath = "/reportes", Icon = "fas fa-chart-line",
+                WindowId = "win-reports", Level = 0, SortOrder = 7,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
+                CreatedAt = now, CreatedBy = currentUser
+            };
+            _context.NavigationRoutes.Add(reports);
+            await _context.SaveChangesAsync();
+
             var allRoutes = new[]
             {
-                dashboard, administration, users, roles, routes, companies, sales, returns,
+                dashboard, administration, users, roles, routes, companies, sales, returns, reports,
                 catalog, branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute,
                 cash, cashRegistersRoute, cashSessionsRoute
             };
@@ -377,6 +389,24 @@ namespace SecureSistem.Controllers
                 {
                     RoleId = adminRole.Id,
                     NavigationRouteId = route.Id,
+                    IsActive = true,
+                    CreatedAt = now,
+                    CreatedBy = currentUser
+                });
+            }
+
+            // Permission catalog is global (not per-company), unlike routes.
+            var defaultPermissionIds = await _context.Permissions
+                .Where(p => p.IsActive && p.IsDefaultForNewRoles)
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            foreach (var permissionId in defaultPermissionIds)
+            {
+                _context.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = adminRole.Id,
+                    PermissionId = permissionId,
                     IsActive = true,
                     CreatedAt = now,
                     CreatedBy = currentUser
@@ -420,18 +450,18 @@ namespace SecureSistem.Controllers
         public async Task<ActionResult<CompanyResponse>> Update(int id, [FromBody] UpdateCompanyRequest request)
         {
             if (!IsSystemAdmin())
-                return StatusCode(403, new { message = "Only the system administrator can update companies." });
+                return StatusCode(403, new { message = "Solo el administrador del sistema puede actualizar empresas." });
 
             var currentUser = GetCurrentUsername();
 
             var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
             if (company is null)
-                return NotFound(new { message = "Company not found." });
+                return NotFound(new { message = "Empresa no encontrada." });
 
             var nameExists = await _context.Companies
                 .AnyAsync(c => c.Name == request.Name && c.Id != id && c.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A company with this name already exists." });
+                return BadRequest(new { message = "Ya existe una empresa con este nombre." });
 
             company.Name = request.Name;
             company.TaxId = request.TaxId;
@@ -447,7 +477,7 @@ namespace SecureSistem.Controllers
             company.MaxUsers = request.MaxUsers;
             company.MaxConcurrentSessions = request.MaxConcurrentSessions;
             company.SubscriptionExpiresAt = request.SubscriptionExpiresAt;
-            company.ModifiedAt = DateTime.UtcNow;
+            company.ModifiedAt = DateTimeHelper.Now;
             company.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -467,23 +497,23 @@ namespace SecureSistem.Controllers
         public async Task<IActionResult> Deactivate(int id)
         {
             if (!IsSystemAdmin())
-                return StatusCode(403, new { message = "Only the system administrator can deactivate companies." });
+                return StatusCode(403, new { message = "Solo el administrador del sistema puede desactivar empresas." });
 
             var currentUser = GetCurrentUsername();
 
             var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
             if (company is null)
-                return NotFound(new { message = "Company not found." });
+                return NotFound(new { message = "Empresa no encontrada." });
 
             company.IsActive = false;
-            company.ModifiedAt = DateTime.UtcNow;
+            company.ModifiedAt = DateTimeHelper.Now;
             company.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Company deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Company deactivated successfully." });
+            return Ok(new { message = "Empresa desactivada correctamente." });
         }
 
         /// <summary>
@@ -499,22 +529,22 @@ namespace SecureSistem.Controllers
         public async Task<ActionResult<CompanyResponse>> UploadLogo(int id, IFormFile file)
         {
             if (!IsSystemAdmin() && id != GetCompanyId())
-                return StatusCode(403, new { message = "You can only update your own company's logo." });
+                return StatusCode(403, new { message = "Solo puedes actualizar el logo de tu propia empresa." });
 
             var currentUser = GetCurrentUsername();
 
             var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
             if (company is null)
-                return NotFound(new { message = "Company not found." });
+                return NotFound(new { message = "Empresa no encontrada." });
 
             if (file is null || file.Length == 0)
-                return BadRequest(new { message = "No file was uploaded." });
+                return BadRequest(new { message = "No se subió ningún archivo." });
 
             if (file.Length > MaxLogoSizeBytes)
-                return BadRequest(new { message = "Logo must be 2 MB or smaller." });
+                return BadRequest(new { message = "El logo debe pesar 2 MB o menos." });
 
             if (!AllowedLogoContentTypes.TryGetValue(file.ContentType, out var extension))
-                return BadRequest(new { message = "Logo must be a PNG, JPEG, WEBP or GIF image." });
+                return BadRequest(new { message = "El logo debe ser una imagen PNG, JPEG, WEBP o GIF." });
 
             var folderRelative = Path.Combine("uploads", "companies", id.ToString());
             var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
@@ -534,7 +564,7 @@ namespace SecureSistem.Controllers
             }
 
             company.LogoPath = $"/{folderRelative.Replace(Path.DirectorySeparatorChar, '/')}/{fileName}";
-            company.ModifiedAt = DateTime.UtcNow;
+            company.ModifiedAt = DateTimeHelper.Now;
             company.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -557,14 +587,14 @@ namespace SecureSistem.Controllers
         public async Task<ActionResult<CompanyResponse>> UpdateColorPreset(int id, [FromBody] UpdateColorPresetRequest request)
         {
             if (!IsSystemAdmin() && id != GetCompanyId())
-                return StatusCode(403, new { message = "You can only update your own company's color preset." });
+                return StatusCode(403, new { message = "Solo puedes actualizar el tema de color de tu propia empresa." });
 
             var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
             if (company is null)
-                return NotFound(new { message = "Company not found." });
+                return NotFound(new { message = "Empresa no encontrada." });
 
             company.ColorPreset = request.ColorPreset;
-            company.ModifiedAt = DateTime.UtcNow;
+            company.ModifiedAt = DateTimeHelper.Now;
             company.ModifiedBy = GetCurrentUsername();
 
             await _context.SaveChangesAsync();

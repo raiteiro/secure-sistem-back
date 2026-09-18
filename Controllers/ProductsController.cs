@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Products;
 using SecureSistem.Models;
@@ -81,7 +82,7 @@ namespace SecureSistem.Controllers
             var product = await query.FirstOrDefaultAsync();
 
             if (product is null)
-                return NotFound(new { message = "Product not found." });
+                return NotFound(new { message = "Producto no encontrado." });
 
             return Ok(MapToResponse(product));
         }
@@ -103,14 +104,14 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create products in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear productos en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             var validationError = await ValidateCategoryAndTaxRate(request.CategoryId, request.TaxRateId, companyId);
             if (validationError is not null)
@@ -121,7 +122,7 @@ namespace SecureSistem.Controllers
                 var skuExists = await _context.Products
                     .AnyAsync(p => p.Sku == request.Sku && p.CompanyId == companyId && p.IsActive);
                 if (skuExists)
-                    return BadRequest(new { message = "A product with this SKU already exists." });
+                    return BadRequest(new { message = "Ya existe un producto con este SKU." });
             }
 
             var product = new Product
@@ -136,7 +137,7 @@ namespace SecureSistem.Controllers
                 TaxRateId = request.TaxRateId,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -168,7 +169,7 @@ namespace SecureSistem.Controllers
             var product = await query.FirstOrDefaultAsync();
 
             if (product is null)
-                return NotFound(new { message = "Product not found." });
+                return NotFound(new { message = "Producto no encontrado." });
 
             var validationError = await ValidateCategoryAndTaxRate(request.CategoryId, request.TaxRateId, product.CompanyId);
             if (validationError is not null)
@@ -179,7 +180,7 @@ namespace SecureSistem.Controllers
                 var skuExists = await _context.Products
                     .AnyAsync(p => p.Sku == request.Sku && p.CompanyId == product.CompanyId && p.Id != id && p.IsActive);
                 if (skuExists)
-                    return BadRequest(new { message = "A product with this SKU already exists." });
+                    return BadRequest(new { message = "Ya existe un producto con este SKU." });
             }
 
             product.Sku = request.Sku;
@@ -190,7 +191,7 @@ namespace SecureSistem.Controllers
             product.Cost = request.Cost;
             product.CategoryId = request.CategoryId;
             product.TaxRateId = request.TaxRateId;
-            product.ModifiedAt = DateTime.UtcNow;
+            product.ModifiedAt = DateTimeHelper.Now;
             product.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -219,17 +220,17 @@ namespace SecureSistem.Controllers
             var product = await query.FirstOrDefaultAsync();
 
             if (product is null)
-                return NotFound(new { message = "Product not found." });
+                return NotFound(new { message = "Producto no encontrado." });
 
             product.IsActive = false;
-            product.ModifiedAt = DateTime.UtcNow;
+            product.ModifiedAt = DateTimeHelper.Now;
             product.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Product deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Product deactivated successfully." });
+            return Ok(new { message = "Producto desactivado correctamente." });
         }
 
         /// <summary>
@@ -249,18 +250,18 @@ namespace SecureSistem.Controllers
 
             var product = await query.FirstOrDefaultAsync();
             if (product is null)
-                return NotFound(new { message = "Product not found." });
+                return NotFound(new { message = "Producto no encontrado." });
 
             var currentUser = GetCurrentUsername();
 
             if (file is null || file.Length == 0)
-                return BadRequest(new { message = "No file was uploaded." });
+                return BadRequest(new { message = "No se subió ningún archivo." });
 
             if (file.Length > MaxImageSizeBytes)
-                return BadRequest(new { message = "Image must be 2 MB or smaller." });
+                return BadRequest(new { message = "La imagen debe pesar 2 MB o menos." });
 
             if (!AllowedImageContentTypes.TryGetValue(file.ContentType, out var extension))
-                return BadRequest(new { message = "Image must be a PNG, JPEG, WEBP or GIF file." });
+                return BadRequest(new { message = "La imagen debe ser un archivo PNG, JPEG, WEBP o GIF." });
 
             var folderRelative = Path.Combine("uploads", "products", id.ToString());
             var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
@@ -279,7 +280,7 @@ namespace SecureSistem.Controllers
             }
 
             product.ImagePath = $"/{folderRelative.Replace(Path.DirectorySeparatorChar, '/')}/{fileName}";
-            product.ModifiedAt = DateTime.UtcNow;
+            product.ModifiedAt = DateTimeHelper.Now;
             product.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -297,7 +298,7 @@ namespace SecureSistem.Controllers
                 var categoryValid = await _context.Categories
                     .AnyAsync(c => c.Id == categoryId && c.CompanyId == companyId && c.IsActive);
                 if (!categoryValid)
-                    return "Category must belong to the same company.";
+                    return "La categoría debe pertenecer a la misma empresa.";
             }
 
             if (taxRateId is not null)
@@ -305,7 +306,7 @@ namespace SecureSistem.Controllers
                 var taxRateValid = await _context.TaxRates
                     .AnyAsync(t => t.Id == taxRateId && t.CompanyId == companyId && t.IsActive);
                 if (!taxRateValid)
-                    return "Tax rate must belong to the same company.";
+                    return "El impuesto debe pertenecer a la misma empresa.";
             }
 
             return null;

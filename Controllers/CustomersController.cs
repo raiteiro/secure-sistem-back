@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Customers;
 using SecureSistem.Models;
@@ -60,7 +61,7 @@ namespace SecureSistem.Controllers
             var customer = await query.FirstOrDefaultAsync();
 
             if (customer is null)
-                return NotFound(new { message = "Customer not found." });
+                return NotFound(new { message = "Cliente no encontrado." });
 
             return Ok(MapToResponse(customer));
         }
@@ -82,21 +83,21 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create customers in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear clientes en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             if (request.Email is not null)
             {
                 var emailExists = await _context.Customers
                     .AnyAsync(c => c.Email == request.Email && c.CompanyId == companyId && c.IsActive);
                 if (emailExists)
-                    return BadRequest(new { message = "A customer with this email already exists." });
+                    return BadRequest(new { message = "Ya existe un cliente con este correo." });
             }
 
             var customer = new Customer
@@ -108,7 +109,7 @@ namespace SecureSistem.Controllers
                 Address = request.Address,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -139,14 +140,14 @@ namespace SecureSistem.Controllers
             var customer = await query.FirstOrDefaultAsync();
 
             if (customer is null)
-                return NotFound(new { message = "Customer not found." });
+                return NotFound(new { message = "Cliente no encontrado." });
 
             if (request.Email is not null)
             {
                 var emailExists = await _context.Customers
                     .AnyAsync(c => c.Email == request.Email && c.CompanyId == customer.CompanyId && c.Id != id && c.IsActive);
                 if (emailExists)
-                    return BadRequest(new { message = "A customer with this email already exists." });
+                    return BadRequest(new { message = "Ya existe un cliente con este correo." });
             }
 
             customer.Name = request.Name;
@@ -154,7 +155,7 @@ namespace SecureSistem.Controllers
             customer.Phone = request.Phone;
             customer.TaxId = request.TaxId;
             customer.Address = request.Address;
-            customer.ModifiedAt = DateTime.UtcNow;
+            customer.ModifiedAt = DateTimeHelper.Now;
             customer.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -182,17 +183,17 @@ namespace SecureSistem.Controllers
             var customer = await query.FirstOrDefaultAsync();
 
             if (customer is null)
-                return NotFound(new { message = "Customer not found." });
+                return NotFound(new { message = "Cliente no encontrado." });
 
             customer.IsActive = false;
-            customer.ModifiedAt = DateTime.UtcNow;
+            customer.ModifiedAt = DateTimeHelper.Now;
             customer.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Customer deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Customer deactivated successfully." });
+            return Ok(new { message = "Cliente desactivado correctamente." });
         }
 
         private static CustomerResponse MapToResponse(Customer customer)

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -97,6 +98,53 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Two things on every genuinely authenticated request (never on /auth/refresh itself,
+// which carries no Bearer token):
+// 1. Rejects the request immediately if this JWT's session (its "sessionId" claim, the
+//    RefreshToken it was issued alongside) has been revoked — e.g. because the same user
+//    logged in elsewhere. Without this, a revoked RefreshToken only blocks future renewals;
+//    an already-issued access token would otherwise keep working until it expires (up to
+//    Jwt:ExpirationHours). Tokens issued before this check existed have no "sessionId"
+//    claim — they're let through untouched rather than force-logged-out on deploy.
+// 2. Stamps User.LastSeenAt — real inactivity signal for AuthController's idle-session
+//    check, independent of how often the refresh token silently renews itself.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var userIdClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sessionIdClaim = context.User.FindFirstValue("sessionId");
+
+        if (userIdClaim is not null && int.TryParse(userIdClaim, out var userId))
+        {
+            var db = context.RequestServices.GetRequiredService<ApplicationDbContext>();
+
+            if (sessionIdClaim is not null && int.TryParse(sessionIdClaim, out var sessionId))
+            {
+                var isRevoked = await db.RefreshTokens
+                    .Where(rt => rt.Id == sessionId)
+                    .Select(rt => (bool?)(rt.RevokedAt != null))
+                    .FirstOrDefaultAsync() ?? true;
+
+                if (isRevoked)
+                {
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        message = "Tu sesión se cerró porque iniciaste sesión en otro lugar."
+                    });
+                    return;
+                }
+            }
+
+            await db.Users.Where(u => u.Id == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.LastSeenAt, DateTime.UtcNow));
+        }
+    }
+
+    await next();
+});
 
 app.MapControllers();
 

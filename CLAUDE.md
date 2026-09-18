@@ -19,6 +19,50 @@ Este es un proyecto plantilla (template) en ASP.NET Core 8 que sirve como base p
 ### Idioma
 - El código (clases, métodos, variables, comentarios técnicos) se escribe en inglés
 - La documentación y comunicación con el desarrollador es en español
+- **Todo mensaje que la API regresa al frontend va en español.** Esto incluye el
+  `message` de `BadRequest`/`NotFound`/`Unauthorized`/`StatusCode`/`Ok`, y el
+  `ErrorMessage` de los atributos de validación (`[RegularExpression]`,
+  `[MinLength]`, etc.) en los DTOs — cualquier texto que el usuario final
+  pueda llegar a ver en la UI. No aplica a nombres de propiedades/campos JSON
+  (esos son identificadores, se quedan en inglés) ni a logs (`ILogger`), que
+  siguen la convención de código en inglés de la sección de arriba.
+- Excepción conocida y pendiente: los mensajes de validación por defecto que
+  genera ASP.NET Core para atributos de `DataAnnotations` sin `ErrorMessage`
+  explícito (ej. `[Required]` sin mensaje propio) siguen en inglés porque
+  vienen del framework, no de código propio — ver `TECH_DEBT.md`.
+
+### Fechas y Horas
+
+- **Todo timestamp de negocio (`CreatedAt`, `ModifiedAt`, `OpenedAt`,
+  `ClosedAt`, `LastLoginAt`, etc.) se genera con `Common/DateTimeHelper.Now`**,
+  nunca con `DateTime.UtcNow` ni `DateTime.Now` directo. `DateTimeHelper.Now`
+  convierte explícitamente a la zona horaria de Ciudad de México
+  (`America/Mexico_City`, con `Central Standard Time (Mexico)` como
+  fallback si esa lista IANA no está disponible en el runtime) y lo entrega
+  como un valor "naive" (`DateTimeKind.Unspecified`, sin sufijo `Z`/offset al
+  serializar a JSON), para que el frontend lo muestre tal cual sin tener que
+  convertir nada.
+  - **Por qué**: al registrar una venta la hora salía mal en el frontend.
+    La causa real eran dos bugs relacionados: (1) el código usaba
+    `DateTime.UtcNow` para guardar los timestamps, y (2) por cómo EF Core lee
+    `datetime2` de SQL Server, un valor recién creado en memoria serializaba
+    con `Z` (UTC correcto) pero el mismo valor releído de la base (como pasa
+    en `SalesController.Create`, que hace un re-fetch después de guardar)
+    perdía el `Kind=Utc` y serializaba sin `Z` — el navegador entonces lo
+    interpretaba como si ya fuera hora local, mostrando una hora ~6 horas
+    adelantada. Guardar directamente en hora de México (siempre como valor
+    "naive", consistente sin importar si el dato es recién creado o releído)
+    elimina el bug de raíz y de paso ahorra al frontend tener que convertir
+    zonas horarias.
+  - **Qué NO cambia**: la expiración de JWT/refresh tokens/reset tokens
+    (`ITokenService`, `RefreshToken.IsActive`, `PasswordResetToken.IsActive`,
+    y las comparaciones contra `ExpiresAt` en `AuthController`/
+    `CompaniesController`) se queda en `DateTime.UtcNow` a propósito — es un
+    reloj interno que nunca se le muestra al usuario, y emitir con un reloj y
+    comparar con otro rompería la expiración de sesiones.
+  - Si se agrega un controller/entidad nueva con timestamps, usar
+    `DateTimeHelper.Now` para lo que el usuario ve, y `DateTime.UtcNow` solo
+    para lógica interna de expiración/comparación que nunca se muestra.
 
 ## Estándares de Código
 
@@ -166,8 +210,6 @@ Domain/Interfaces/IUserRepository.cs
     el signo de `quantity` según el `type` del movimiento).
   - Si el componente agrega una ruta de navegación nueva, mencionar bajo qué
     grupo quedó y si ya viene asignada a todos los roles.
-- Este resumen es aparte de, y no sustituye, la prueba en vivo del propio
-  endpoint (que sigue siendo obligatoria antes de dar el trabajo por hecho).
 
 ## Gestión de Deuda Técnica
 

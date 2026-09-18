@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Inventory;
 using SecureSistem.Models;
@@ -78,7 +79,7 @@ namespace SecureSistem.Controllers
             var inventory = await query.FirstOrDefaultAsync();
 
             if (inventory is null)
-                return NotFound(new { message = "Inventory record not found." });
+                return NotFound(new { message = "Registro de inventario no encontrado." });
 
             return Ok(MapToResponse(inventory));
         }
@@ -105,10 +106,10 @@ namespace SecureSistem.Controllers
             var inventory = await query.FirstOrDefaultAsync();
 
             if (inventory is null)
-                return NotFound(new { message = "Inventory record not found." });
+                return NotFound(new { message = "Registro de inventario no encontrado." });
 
             inventory.MinStock = request.MinStock;
-            inventory.ModifiedAt = DateTime.UtcNow;
+            inventory.ModifiedAt = DateTimeHelper.Now;
             inventory.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();

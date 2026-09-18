@@ -8,7 +8,7 @@ namespace SecureSistem.DTOs.Sales
         /// "Cash", "Card" or "Other".
         /// </summary>
         [Required, RegularExpression("^(Cash|Card|Other)$",
-            ErrorMessage = "Method must be 'Cash', 'Card' or 'Other'.")]
+            ErrorMessage = "Method debe ser 'Cash', 'Card' u 'Other'.")]
         public string Method { get; set; } = string.Empty;
 
         [Required, Range(0.01, double.MaxValue)]

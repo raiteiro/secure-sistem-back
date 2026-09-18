@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureSistem.Data;
 
@@ -11,9 +12,11 @@ using SecureSistem.Data;
 namespace SecureSistem.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260916143000_AddUserLastSeenAt")]
+    partial class AddUserLastSeenAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -626,53 +629,6 @@ namespace SecureSistem.Migrations
                     b.ToTable("Payments", (string)null);
                 });
 
-            modelBuilder.Entity("SecureSistem.Models.Permission", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsDefaultForNewRoles")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<string>("WindowId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Key")
-                        .IsUnique();
-
-                    b.ToTable("Permissions", (string)null);
-                });
-
             modelBuilder.Entity("SecureSistem.Models.Product", b =>
                 {
                     b.Property<int>("Id")
@@ -976,41 +932,6 @@ namespace SecureSistem.Migrations
                         .IsUnique();
 
                     b.ToTable("RoleNavigationRoutes", (string)null);
-                });
-
-            modelBuilder.Entity("SecureSistem.Models.RolePermission", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("PermissionId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RoleId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PermissionId");
-
-                    b.HasIndex("RoleId", "PermissionId")
-                        .IsUnique();
-
-                    b.ToTable("RolePermissions", (string)null);
                 });
 
             modelBuilder.Entity("SecureSistem.Models.Sale", b =>
@@ -1670,25 +1591,6 @@ namespace SecureSistem.Migrations
                     b.Navigation("Role");
                 });
 
-            modelBuilder.Entity("SecureSistem.Models.RolePermission", b =>
-                {
-                    b.HasOne("SecureSistem.Models.Permission", "Permission")
-                        .WithMany("RolePermissions")
-                        .HasForeignKey("PermissionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SecureSistem.Models.Role", "Role")
-                        .WithMany()
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Permission");
-
-                    b.Navigation("Role");
-                });
-
             modelBuilder.Entity("SecureSistem.Models.Sale", b =>
                 {
                     b.HasOne("SecureSistem.Models.Branch", "Branch")
@@ -1837,11 +1739,6 @@ namespace SecureSistem.Migrations
             modelBuilder.Entity("SecureSistem.Models.NavigationRoute", b =>
                 {
                     b.Navigation("Children");
-                });
-
-            modelBuilder.Entity("SecureSistem.Models.Permission", b =>
-                {
-                    b.Navigation("RolePermissions");
                 });
 
             modelBuilder.Entity("SecureSistem.Models.Return", b =>

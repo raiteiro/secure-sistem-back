@@ -16,7 +16,7 @@ namespace SecureSistem.Services
             _configuration = configuration;
         }
 
-        public string GenerateToken(User user, string roleName, string companyName)
+        public string GenerateToken(User user, string roleName, string companyName, int sessionId)
         {
             var key = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
@@ -32,7 +32,8 @@ namespace SecureSistem.Services
                 new("companyName", companyName),
                 new("isSystemAdmin", user.IsSystemAdmin.ToString()),
                 new("firstName", user.FirstName),
-                new("lastName", user.LastName)
+                new("lastName", user.LastName),
+                new("sessionId", sessionId.ToString())
             };
 
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

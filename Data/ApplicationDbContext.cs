@@ -34,6 +34,8 @@ namespace SecureSistem.Data
         public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();
         public DbSet<UserNavigationRoute> UserNavigationRoutes => Set<UserNavigationRoute>();
         public DbSet<RoleNavigationRoute> RoleNavigationRoutes => Set<RoleNavigationRoute>();
+        public DbSet<Permission> Permissions => Set<Permission>();
+        public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
         public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 

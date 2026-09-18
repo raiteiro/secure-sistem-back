@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Warehouses;
 using SecureSistem.Models;
@@ -60,7 +61,7 @@ namespace SecureSistem.Controllers
             var warehouse = await query.FirstOrDefaultAsync();
 
             if (warehouse is null)
-                return NotFound(new { message = "Warehouse not found." });
+                return NotFound(new { message = "Almacén no encontrado." });
 
             return Ok(MapToResponse(warehouse));
         }
@@ -82,27 +83,27 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create warehouses in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear almacenes en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             if (request.BranchId is not null)
             {
                 var branchInSameCompany = await _context.Branches
                     .AnyAsync(b => b.Id == request.BranchId && b.CompanyId == companyId && b.IsActive);
                 if (!branchInSameCompany)
-                    return BadRequest(new { message = "Branch must belong to the same target company." });
+                    return BadRequest(new { message = "La sucursal debe pertenecer a la empresa destino." });
             }
 
             var nameExists = await _context.Warehouses
                 .AnyAsync(w => w.Name == request.Name && w.CompanyId == companyId && w.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A warehouse with this name already exists." });
+                return BadRequest(new { message = "Ya existe un almacén con este nombre." });
 
             var warehouse = new Warehouse
             {
@@ -111,7 +112,7 @@ namespace SecureSistem.Controllers
                 BranchId = request.BranchId,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -143,25 +144,25 @@ namespace SecureSistem.Controllers
             var warehouse = await query.FirstOrDefaultAsync();
 
             if (warehouse is null)
-                return NotFound(new { message = "Warehouse not found." });
+                return NotFound(new { message = "Almacén no encontrado." });
 
             if (request.BranchId is not null)
             {
                 var branchInSameCompany = await _context.Branches
                     .AnyAsync(b => b.Id == request.BranchId && b.CompanyId == warehouse.CompanyId && b.IsActive);
                 if (!branchInSameCompany)
-                    return BadRequest(new { message = "Branch must belong to the same company." });
+                    return BadRequest(new { message = "La sucursal debe pertenecer a la misma empresa." });
             }
 
             var nameExists = await _context.Warehouses
                 .AnyAsync(w => w.Name == request.Name && w.CompanyId == warehouse.CompanyId && w.Id != id && w.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A warehouse with this name already exists." });
+                return BadRequest(new { message = "Ya existe un almacén con este nombre." });
 
             warehouse.Name = request.Name;
             warehouse.Address = request.Address;
             warehouse.BranchId = request.BranchId;
-            warehouse.ModifiedAt = DateTime.UtcNow;
+            warehouse.ModifiedAt = DateTimeHelper.Now;
             warehouse.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -192,22 +193,22 @@ namespace SecureSistem.Controllers
             var warehouse = await query.FirstOrDefaultAsync();
 
             if (warehouse is null)
-                return NotFound(new { message = "Warehouse not found." });
+                return NotFound(new { message = "Almacén no encontrado." });
 
             var activeWarehouseCount = await _context.Warehouses
                 .CountAsync(w => w.CompanyId == warehouse.CompanyId && w.IsActive);
             if (activeWarehouseCount <= 1)
-                return BadRequest(new { message = "Cannot deactivate the only active warehouse of a company." });
+                return BadRequest(new { message = "No se puede desactivar el único almacén activo de una empresa." });
 
             warehouse.IsActive = false;
-            warehouse.ModifiedAt = DateTime.UtcNow;
+            warehouse.ModifiedAt = DateTimeHelper.Now;
             warehouse.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Warehouse deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Warehouse deactivated successfully." });
+            return Ok(new { message = "Almacén desactivado correctamente." });
         }
 
         private static WarehouseResponse MapToResponse(Warehouse warehouse)

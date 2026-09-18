@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Users;
 using SecureSistem.Models;
@@ -61,7 +62,7 @@ namespace SecureSistem.Controllers
             var user = await query.FirstOrDefaultAsync();
 
             if (user is null)
-                return NotFound(new { message = "User not found." });
+                return NotFound(new { message = "Usuario no encontrado." });
 
             return Ok(MapToResponse(user));
         }
@@ -83,14 +84,14 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create users in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear usuarios en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId && c.IsActive);
             if (company is null)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             if (company.MaxUsers is not null)
             {
@@ -107,18 +108,18 @@ namespace SecureSistem.Controllers
             var usernameExists = await _context.Users
                 .AnyAsync(u => u.Username == request.Username && u.CompanyId == companyId);
             if (usernameExists)
-                return BadRequest(new { message = "Username already exists in this company." });
+                return BadRequest(new { message = "El nombre de usuario ya existe en esta empresa." });
 
             // Validate unique email globally
             var emailExists = await _context.Users.AnyAsync(u => u.Email == request.Email);
             if (emailExists)
-                return BadRequest(new { message = "Email already in use." });
+                return BadRequest(new { message = "El correo ya está en uso." });
 
             // Validate role belongs to same company
             var roleExists = await _context.Roles
                 .AnyAsync(r => r.Id == request.RoleId && r.CompanyId == companyId && r.IsActive);
             if (!roleExists)
-                return BadRequest(new { message = "Invalid role." });
+                return BadRequest(new { message = "Rol inválido." });
 
             var user = new User
             {
@@ -131,7 +132,7 @@ namespace SecureSistem.Controllers
                 RoleId = request.RoleId,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -164,25 +165,25 @@ namespace SecureSistem.Controllers
             var user = await query.FirstOrDefaultAsync();
 
             if (user is null)
-                return NotFound(new { message = "User not found." });
+                return NotFound(new { message = "Usuario no encontrado." });
 
             // Validate unique username (exclude current user)
             var usernameExists = await _context.Users
                 .AnyAsync(u => u.Username == request.Username && u.CompanyId == user.CompanyId && u.Id != id);
             if (usernameExists)
-                return BadRequest(new { message = "Username already exists in this company." });
+                return BadRequest(new { message = "El nombre de usuario ya existe en esta empresa." });
 
             // Validate unique email (exclude current user)
             var emailExists = await _context.Users
                 .AnyAsync(u => u.Email == request.Email && u.Id != id);
             if (emailExists)
-                return BadRequest(new { message = "Email already in use." });
+                return BadRequest(new { message = "El correo ya está en uso." });
 
             // Validate role
             var roleExists = await _context.Roles
                 .AnyAsync(r => r.Id == request.RoleId && r.CompanyId == user.CompanyId && r.IsActive);
             if (!roleExists)
-                return BadRequest(new { message = "Invalid role." });
+                return BadRequest(new { message = "Rol inválido." });
 
             user.Username = request.Username;
             user.Email = request.Email;
@@ -190,7 +191,7 @@ namespace SecureSistem.Controllers
             user.LastName = request.LastName;
             user.PhoneNumber = request.PhoneNumber;
             user.RoleId = request.RoleId;
-            user.ModifiedAt = DateTime.UtcNow;
+            user.ModifiedAt = DateTimeHelper.Now;
             user.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -219,17 +220,17 @@ namespace SecureSistem.Controllers
             var user = await query.FirstOrDefaultAsync();
 
             if (user is null)
-                return NotFound(new { message = "User not found." });
+                return NotFound(new { message = "Usuario no encontrado." });
 
             user.IsActive = false;
-            user.ModifiedAt = DateTime.UtcNow;
+            user.ModifiedAt = DateTimeHelper.Now;
             user.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("User deactivated: {Id} - {Username} by {ModifiedBy}", user.Id, user.Username, currentUser);
 
-            return Ok(new { message = "User deactivated successfully." });
+            return Ok(new { message = "Usuario desactivado correctamente." });
         }
 
         /// <summary>
@@ -251,14 +252,14 @@ namespace SecureSistem.Controllers
 
             var user = await query.FirstOrDefaultAsync();
             if (user is null)
-                return NotFound(new { message = "User not found." });
+                return NotFound(new { message = "Usuario no encontrado." });
 
             var currentUser = GetCurrentUsername();
             var temporaryPassword = GenerateTemporaryPassword();
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
             user.MustChangePassword = true;
-            user.ModifiedAt = DateTime.UtcNow;
+            user.ModifiedAt = DateTimeHelper.Now;
             user.ModifiedBy = currentUser;
 
             var activeSessions = await _context.RefreshTokens
@@ -272,7 +273,7 @@ namespace SecureSistem.Controllers
             _logger.LogInformation("Password reset for user {Id} - {Username} by {ModifiedBy}",
                 user.Id, user.Username, currentUser);
 
-            return Ok(new { message = "Password reset successfully.", temporaryPassword });
+            return Ok(new { message = "Contraseña restablecida correctamente.", temporaryPassword });
         }
 
         private static string GenerateTemporaryPassword()
@@ -296,18 +297,18 @@ namespace SecureSistem.Controllers
         public async Task<ActionResult<UserResponse>> ReassignCompany(int id, [FromBody] ReassignUserCompanyRequest request)
         {
             if (!IsSystemAdmin())
-                return StatusCode(403, new { message = "Only the system administrator can reassign a user's company." });
+                return StatusCode(403, new { message = "Solo el administrador del sistema puede reasignar la empresa de un usuario." });
 
             var currentUser = GetCurrentUsername();
 
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
             if (user is null)
-                return NotFound(new { message = "User not found." });
+                return NotFound(new { message = "Usuario no encontrado." });
 
             var company = await _context.Companies
                 .FirstOrDefaultAsync(c => c.Id == request.CompanyId && c.IsActive);
             if (company is null)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             if (company.MaxUsers is not null && user.CompanyId != request.CompanyId)
             {
@@ -323,16 +324,16 @@ namespace SecureSistem.Controllers
             var usernameExists = await _context.Users
                 .AnyAsync(u => u.Username == user.Username && u.CompanyId == request.CompanyId && u.Id != id);
             if (usernameExists)
-                return BadRequest(new { message = "Username already exists in the target company." });
+                return BadRequest(new { message = "El nombre de usuario ya existe en la empresa destino." });
 
             var roleExists = await _context.Roles
                 .AnyAsync(r => r.Id == request.RoleId && r.CompanyId == request.CompanyId && r.IsActive);
             if (!roleExists)
-                return BadRequest(new { message = "Invalid role for the target company." });
+                return BadRequest(new { message = "Rol inválido para la empresa destino." });
 
             user.CompanyId = request.CompanyId;
             user.RoleId = request.RoleId;
-            user.ModifiedAt = DateTime.UtcNow;
+            user.ModifiedAt = DateTimeHelper.Now;
             user.ModifiedBy = currentUser;
 
             // Direct route assignments belonged to the previous company's route tree.

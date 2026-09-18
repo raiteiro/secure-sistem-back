@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.CashRegisters;
 using SecureSistem.Models;
@@ -61,7 +62,7 @@ namespace SecureSistem.Controllers
             var register = await query.FirstOrDefaultAsync();
 
             if (register is null)
-                return NotFound(new { message = "Cash register not found." });
+                return NotFound(new { message = "Caja no encontrada." });
 
             return Ok(await MapToResponseAsync(register));
         }
@@ -83,7 +84,7 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create cash registers in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear cajas en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
@@ -91,12 +92,12 @@ namespace SecureSistem.Controllers
             var branch = await _context.Branches
                 .FirstOrDefaultAsync(b => b.Id == request.BranchId && b.CompanyId == companyId && b.IsActive);
             if (branch is null)
-                return BadRequest(new { message = "Branch must belong to the target company." });
+                return BadRequest(new { message = "La sucursal debe pertenecer a la empresa destino." });
 
             var nameExists = await _context.CashRegisters
                 .AnyAsync(c => c.Name == request.Name && c.BranchId == request.BranchId && c.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A cash register with this name already exists at this branch." });
+                return BadRequest(new { message = "Ya existe una caja con este nombre en esta sucursal." });
 
             var register = new CashRegister
             {
@@ -104,7 +105,7 @@ namespace SecureSistem.Controllers
                 BranchId = request.BranchId,
                 CompanyId = companyId,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeHelper.Now,
                 CreatedBy = currentUser
             };
 
@@ -136,21 +137,21 @@ namespace SecureSistem.Controllers
             var register = await query.FirstOrDefaultAsync();
 
             if (register is null)
-                return NotFound(new { message = "Cash register not found." });
+                return NotFound(new { message = "Caja no encontrada." });
 
             var branch = await _context.Branches
                 .FirstOrDefaultAsync(b => b.Id == request.BranchId && b.CompanyId == register.CompanyId && b.IsActive);
             if (branch is null)
-                return BadRequest(new { message = "Branch must belong to the same company." });
+                return BadRequest(new { message = "La sucursal debe pertenecer a la misma empresa." });
 
             var nameExists = await _context.CashRegisters
                 .AnyAsync(c => c.Name == request.Name && c.BranchId == request.BranchId && c.Id != id && c.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A cash register with this name already exists at this branch." });
+                return BadRequest(new { message = "Ya existe una caja con este nombre en esta sucursal." });
 
             register.Name = request.Name;
             register.BranchId = request.BranchId;
-            register.ModifiedAt = DateTime.UtcNow;
+            register.ModifiedAt = DateTimeHelper.Now;
             register.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -180,22 +181,22 @@ namespace SecureSistem.Controllers
             var register = await query.FirstOrDefaultAsync();
 
             if (register is null)
-                return NotFound(new { message = "Cash register not found." });
+                return NotFound(new { message = "Caja no encontrada." });
 
             var hasOpenSession = await _context.CashSessions
                 .AnyAsync(s => s.CashRegisterId == id && s.ClosedAt == null);
             if (hasOpenSession)
-                return BadRequest(new { message = "Cannot deactivate a cash register with an open session." });
+                return BadRequest(new { message = "No se puede desactivar una caja con un turno abierto." });
 
             register.IsActive = false;
-            register.ModifiedAt = DateTime.UtcNow;
+            register.ModifiedAt = DateTimeHelper.Now;
             register.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Cash register deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Cash register deactivated successfully." });
+            return Ok(new { message = "Caja desactivada correctamente." });
         }
 
         private async Task<CashRegisterResponse> MapToResponseAsync(CashRegister register)

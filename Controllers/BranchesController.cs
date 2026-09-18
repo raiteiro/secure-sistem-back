@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.Branches;
 using SecureSistem.Models;
@@ -60,7 +61,7 @@ namespace SecureSistem.Controllers
             var branch = await query.FirstOrDefaultAsync();
 
             if (branch is null)
-                return NotFound(new { message = "Branch not found." });
+                return NotFound(new { message = "Sucursal no encontrada." });
 
             return Ok(MapToResponse(branch));
         }
@@ -85,28 +86,28 @@ namespace SecureSistem.Controllers
             if (request.CompanyId is not null && request.CompanyId != callerCompanyId)
             {
                 if (!IsSystemAdmin())
-                    return StatusCode(403, new { message = "Only the system administrator can create branches in another company." });
+                    return StatusCode(403, new { message = "Solo el administrador del sistema puede crear sucursales en otra empresa." });
 
                 companyId = request.CompanyId.Value;
             }
 
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId && c.IsActive);
             if (!companyExists)
-                return BadRequest(new { message = "Invalid company." });
+                return BadRequest(new { message = "Empresa inválida." });
 
             var nameExists = await _context.Branches
                 .AnyAsync(b => b.Name == request.Name && b.CompanyId == companyId && b.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A branch with this name already exists." });
+                return BadRequest(new { message = "Ya existe una sucursal con este nombre." });
 
             var warehouseName = $"Almacén {request.Name}";
             var warehouseNameExists = await _context.Warehouses
                 .AnyAsync(w => w.Name == warehouseName && w.CompanyId == companyId && w.IsActive);
             if (warehouseNameExists)
-                return BadRequest(new { message = "A warehouse with the auto-generated name for this branch already exists." });
+                return BadRequest(new { message = "Ya existe un almacén con el nombre que se generaría automáticamente para esta sucursal." });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTimeHelper.Now;
 
             var branch = new Branch
             {
@@ -159,17 +160,17 @@ namespace SecureSistem.Controllers
             var branch = await query.FirstOrDefaultAsync();
 
             if (branch is null)
-                return NotFound(new { message = "Branch not found." });
+                return NotFound(new { message = "Sucursal no encontrada." });
 
             var nameExists = await _context.Branches
                 .AnyAsync(b => b.Name == request.Name && b.CompanyId == branch.CompanyId && b.Id != id && b.IsActive);
             if (nameExists)
-                return BadRequest(new { message = "A branch with this name already exists." });
+                return BadRequest(new { message = "Ya existe una sucursal con este nombre." });
 
             branch.Name = request.Name;
             branch.Address = request.Address;
             branch.Phone = request.Phone;
-            branch.ModifiedAt = DateTime.UtcNow;
+            branch.ModifiedAt = DateTimeHelper.Now;
             branch.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
@@ -199,22 +200,22 @@ namespace SecureSistem.Controllers
             var branch = await query.FirstOrDefaultAsync();
 
             if (branch is null)
-                return NotFound(new { message = "Branch not found." });
+                return NotFound(new { message = "Sucursal no encontrada." });
 
             var activeBranchCount = await _context.Branches
                 .CountAsync(b => b.CompanyId == branch.CompanyId && b.IsActive);
             if (activeBranchCount <= 1)
-                return BadRequest(new { message = "Cannot deactivate the only active branch of a company." });
+                return BadRequest(new { message = "No se puede desactivar la única sucursal activa de una empresa." });
 
             branch.IsActive = false;
-            branch.ModifiedAt = DateTime.UtcNow;
+            branch.ModifiedAt = DateTimeHelper.Now;
             branch.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Branch deactivated: {Id} by {ModifiedBy}", id, currentUser);
 
-            return Ok(new { message = "Branch deactivated successfully." });
+            return Ok(new { message = "Sucursal desactivada correctamente." });
         }
 
         private static BranchResponse MapToResponse(Branch branch)

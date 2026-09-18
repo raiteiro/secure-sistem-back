@@ -69,7 +69,7 @@ namespace SecureSistem.DTOs.Companies
         /// Null uses the default ("purple") look.
         /// </summary>
         [RegularExpression("^(purple|ocean|emerald|teal|ruby|amber|rose|indigo|slate|sky-light)$",
-            ErrorMessage = "ColorPreset must be one of the known palette ids.")]
+            ErrorMessage = "ColorPreset debe ser uno de los ids de paleta conocidos.")]
         public string? ColorPreset { get; set; }
 
         public int? MaxUsers { get; set; }

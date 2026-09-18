@@ -94,12 +94,67 @@ nada de eso aquí.
   - Pantalla nueva **Devoluciones** (`/devoluciones`), ítem suelto junto a
     "Ventas", `IsDefaultForNewRoles = true`, con backfill para Empresa Demo y
     VetPet (empresas activas) y todos sus roles activos.
-- [ ] **Tickets/recibos** — folio consecutivo, impresión, opcionalmente envío
-  por correo.
-- [ ] **Reportes básicos** — ventas por día/periodo, productos más vendidos,
-  corte por cajero.
-- [ ] **Permisos aplicados al POS** — usando los `Role` que ya existen (ej. un
-  cajero no puede cancelar una venta sin autorización de un supervisor).
+- [x] **Tickets/recibos** — folio consecutivo (ya cubierto por
+  `Sale.FolioNumber`), más dos endpoints nuevos en `SalesController`:
+  - `GET /api/sales/{id}/receipt`: el detalle completo de la venta más el
+    encabezado de la empresa (nombre, RFC/TaxId, dirección, teléfono, logo)
+    que `SaleResponse` no trae — pensado para que el frontend arme el ticket
+    imprimible sin tener que cruzar `Company` por separado. No hay generación
+    de PDF en el backend (no hay librería de PDF en el proyecto); esa parte es
+    responsabilidad del frontend/driver de impresora.
+  - `POST /api/sales/{id}/send-receipt`: envía el recibo por correo (texto
+    plano) usando `IEmailService`. Si el body no trae `email`, usa el del
+    cliente de la venta; si no hay ninguno de los dos, 400. Si el envío falla
+    (típicamente porque SMTP no está configurado — ver `TECH_DEBT.md`),
+    responde 502 en vez de reventar, igual que `forgot-password`.
+- [x] **Reportes básicos** — ventas por día/periodo, productos más vendidos,
+  corte por cajero. Todo de solo lectura en `ReportsController`
+  (`/api/reports`), sin capa de repositorio ni `Result<T>` (esos patrones de
+  "Patrones Obligatorios" en `CLAUDE.md` son aspiracionales y no se usan en
+  ningún controller real del proyecto — se siguió la convención real:
+  `ApplicationDbContext` inyectado directo, `{ message }` en español para
+  errores). Tres endpoints:
+  - `GET /api/reports/sales-by-period`: ventas (excluye canceladas) agrupadas
+    por día o mes (`groupBy=day|month`) dentro de un rango de fechas. Cada
+    periodo trae anidado `products` con **todos** los productos vendidos en
+    ese periodo (mismo shape que `top-products`, sin límite), pedido por el
+    frontend para no tener que cruzar ambos endpoints a mano.
+  - `GET /api/reports/top-products`: productos más vendidos por cantidad
+    dentro de un rango de fechas, con límite configurable.
+  - `GET /api/reports/cashier-closeouts`: histórico de cortes de caja
+    (turnos ya cerrados) con el desglose de ventas por método de pago detrás
+    de cada uno, filtrable por cajero/sucursal/fecha.
+  - Los tres por defecto cubren "el mes en curso a la fecha" si no se manda
+    `from`/`to`, y respetan el filtro de empresa/`IsSystemAdmin()` como el
+    resto de los endpoints.
+  - Pantalla nueva **Reportes** (`/reportes`), ítem suelto junto a
+    "Devoluciones", `IsDefaultForNewRoles = true`, con backfill para Empresa
+    Demo y VetPet (empresas activas) y todos sus roles activos.
+- [x] **Permisos aplicados al POS** — usando los `Role` que ya existen. Alcance
+  decidido: control por ventana **y por botón/acción** (catálogo de 46
+  acciones, ver `permissions.md` en la raíz para el árbol completo
+  ventana → acciones), sin validación adicional en el backend por ahora —
+  se considera suficiente con que el frontend oculte/deshabilite botones
+  según el permiso, mismo criterio que ya se usaba para rutas.
+  - `Permission` (catálogo global, no por empresa — a diferencia de
+    `NavigationRoute`, una acción solo tiene sentido si el backend
+    efectivamente la valida, así que no se crea libremente vía API) +
+    `RolePermission` (asignación por rol, mismo patrón que
+    `RoleNavigationRoute`).
+  - `GET /api/permissions` (catálogo completo) y
+    `GET /api/permissions/my-permissions` (claves efectivas del usuario
+    actual, para que el frontend decida qué botones mostrar/habilitar sin
+    tener que llamar la API con cada click).
+  - `GET/POST /api/roles/{id}/permissions` en `RolesController` para
+    asignar/revocar acciones por rol, calcado de `/routes`.
+  - Todas arrancan con `IsDefaultForNewRoles = true` (permisivo por
+    default, igual que las rutas de "Catálogo") — se le asignaron a los 4
+    roles activos que ya existían (backfill vía la propia migración, no
+    manual) y `RolesController.Create`/`CompaniesController.Create` ya
+    asignan los permisos default a cualquier rol nuevo, presente o futuro.
+  - Decisión consciente (no pendiente): el backend no valida estos permisos
+    en cada endpoint — ver `TECH_DEBT.md` para el detalle de qué implica
+    eso si se necesita reforzar más adelante.
 
 ## Fase 2 — Valor agregado (después del núcleo)
 
