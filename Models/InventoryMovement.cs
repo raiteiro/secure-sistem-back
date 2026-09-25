@@ -32,6 +32,12 @@ namespace SecureSistem.Models
 
         public string? Notes { get; set; }
 
+        /// <summary>
+        /// Who delivered this stock, for "Purchase" movements (regular buy-in or consignment
+        /// receipt). Null for movements with no supplier involved (sales, adjustments, etc.).
+        /// </summary>
+        public int? SupplierId { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
 
@@ -39,5 +45,6 @@ namespace SecureSistem.Models
         public Product Product { get; set; } = null!;
         public Warehouse Warehouse { get; set; } = null!;
         public Company Company { get; set; } = null!;
+        public Supplier? Supplier { get; set; }
     }
 }

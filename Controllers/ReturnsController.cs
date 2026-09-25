@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
+using SecureSistem.DTOs.Common;
 using SecureSistem.DTOs.Returns;
 using SecureSistem.Models;
 
@@ -28,13 +29,19 @@ namespace SecureSistem.Controllers
 
         /// <summary>
         /// Gets returns for the authenticated user's company, newest first, optionally
-        /// filtered. System administrators see every company's.
+        /// filtered and paginated. System administrators see every company's.
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(List<ReturnResponse>), 200)]
-        public async Task<ActionResult<List<ReturnResponse>>> GetAll(
-            [FromQuery] int? saleId, [FromQuery] int? cashSessionId)
+        [ProducesResponseType(typeof(PagedResponse<ReturnResponse>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<PagedResponse<ReturnResponse>>> GetAll(
+            [FromQuery] int? saleId, [FromQuery] int? cashSessionId,
+            [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+            [FromQuery] int? page, [FromQuery] int? pageSize)
         {
+            if (from is not null && to is not null && from.Value.Date > to.Value.Date)
+                return BadRequest(new { message = "La fecha 'from' no puede ser posterior a 'to'." });
+
             var query = BaseQuery();
 
             if (!IsSystemAdmin())
@@ -46,11 +53,21 @@ namespace SecureSistem.Controllers
             if (cashSessionId is not null)
                 query = query.Where(r => r.CashSessionId == cashSessionId);
 
+            if (from is not null)
+                query = query.Where(r => r.CreatedAt >= from.Value.Date);
+
+            if (to is not null)
+                query = query.Where(r => r.CreatedAt < to.Value.Date.AddDays(1));
+
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
             var returns = await query
                 .OrderByDescending(r => r.CreatedAt)
+                .ApplyPage(normalizedPage, normalizedPageSize)
                 .ToListAsync();
 
-            return Ok(returns.Select(MapToResponse).ToList());
+            return Ok(returns.Select(MapToResponse).ToList().ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>
@@ -169,44 +186,51 @@ namespace SecureSistem.Controllers
                     Total = lineTotal
                 });
 
-                // Restock into the sale's original warehouse.
-                var inventory = await _context.Inventories
-                    .FirstOrDefaultAsync(i => i.ProductId == saleItem.ProductId && i.WarehouseId == sale.WarehouseId);
-                var currentQuantity = inventory?.Quantity ?? 0m;
-                var resultingQuantity = currentQuantity + itemRequest.Quantity;
-
-                if (inventory is null)
+                // Restock into the sale's original warehouse. A combo carries no stock of its
+                // own — restock each of its components instead, scaled by the quantity returned.
+                if (saleItem.Product.IsCombo)
                 {
-                    inventory = new Inventory
+                    var comboItems = await _context.ProductComboItems
+                        .Where(ci => ci.ComboProductId == saleItem.ProductId && ci.IsActive)
+                        .ToListAsync();
+
+                    foreach (var comboItem in comboItems)
                     {
-                        ProductId = saleItem.ProductId,
-                        WarehouseId = sale.WarehouseId,
-                        CompanyId = sale.CompanyId,
-                        Quantity = resultingQuantity,
-                        CreatedAt = now,
-                        CreatedBy = currentUser
-                    };
-                    _context.Inventories.Add(inventory);
+                        await InventoryStockHelper.RestoreStockAsync(
+                            _context, comboItem.ComponentProductId, sale.WarehouseId, sale.CompanyId,
+                            comboItem.Quantity * itemRequest.Quantity, "Return",
+                            $"Return of sale folio {sale.FolioNumber} (combo '{saleItem.Product.Name}')", currentUser, now);
+                    }
                 }
                 else
                 {
-                    inventory.Quantity = resultingQuantity;
-                    inventory.ModifiedAt = now;
-                    inventory.ModifiedBy = currentUser;
+                    await InventoryStockHelper.RestoreStockAsync(
+                        _context, saleItem.ProductId, sale.WarehouseId, sale.CompanyId,
+                        itemRequest.Quantity, "Return", $"Return of sale folio {sale.FolioNumber}", currentUser, now);
                 }
 
-                _context.InventoryMovements.Add(new InventoryMovement
+                // Reduce what's owed to the consignor by the returned share. If it was already
+                // settled/paid out, leave it alone and just flag it — reversing a payment
+                // already made needs a human, not an automatic adjustment.
+                var consignmentSale = await _context.ConsignmentSales
+                    .FirstOrDefaultAsync(cs => cs.SaleItemId == saleItem.Id && !cs.IsVoided);
+                if (consignmentSale is not null)
                 {
-                    ProductId = saleItem.ProductId,
-                    WarehouseId = sale.WarehouseId,
-                    CompanyId = sale.CompanyId,
-                    Type = "Return",
-                    Quantity = itemRequest.Quantity,
-                    ResultingQuantity = resultingQuantity,
-                    Notes = $"Return of sale folio {sale.FolioNumber}",
-                    CreatedAt = now,
-                    CreatedBy = currentUser
-                });
+                    if (consignmentSale.SettlementId is not null)
+                    {
+                        _logger.LogWarning(
+                            "Return processed for sale item {SaleItemId} whose consignment sale {ConsignmentSaleId} was already settled — ledger NOT adjusted, needs manual reconciliation.",
+                            saleItem.Id, consignmentSale.Id);
+                    }
+                    else if (consignmentSale.Quantity > 0)
+                    {
+                        var reductionFraction = Math.Min(itemRequest.Quantity / consignmentSale.Quantity, 1m);
+                        consignmentSale.SaleAmount -= consignmentSale.SaleAmount * reductionFraction;
+                        consignmentSale.ConsignorAmount -= consignmentSale.ConsignorAmount * reductionFraction;
+                        consignmentSale.StoreAmount -= consignmentSale.StoreAmount * reductionFraction;
+                        consignmentSale.Quantity -= itemRequest.Quantity;
+                    }
+                }
             }
 
             var ret = new Return

@@ -49,6 +49,7 @@ builder.Services.AddCors(options =>
 // Services
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<ISaleService, SaleService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

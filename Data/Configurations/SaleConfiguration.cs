@@ -49,6 +49,11 @@ namespace SecureSistem.Data.Configurations
                 .HasForeignKey(x => x.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            builder.HasOne(x => x.Quote)
+                .WithOne()
+                .HasForeignKey<Sale>(x => x.QuoteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             builder.HasIndex(x => new { x.CompanyId, x.FolioNumber }).IsUnique();
             builder.HasIndex(x => x.CashSessionId);
         }

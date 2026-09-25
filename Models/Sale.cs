@@ -16,7 +16,13 @@ namespace SecureSistem.Models
         public int BranchId { get; set; }
         public int WarehouseId { get; set; }
         public int? CustomerId { get; set; }
-        public int CashSessionId { get; set; }
+
+        /// <summary>
+        /// Null for a "direct" sale not tied to a till (e.g. a converted quote) — see
+        /// CashSession's doc comment. Sales with a session count toward that till's
+        /// expected cash on close; direct sales never do.
+        /// </summary>
+        public int? CashSessionId { get; set; }
 
         /// <summary>
         /// The cashier who rang up this sale (must match the CashSession's owner).
@@ -24,6 +30,12 @@ namespace SecureSistem.Models
         public int UserId { get; set; }
 
         public int CompanyId { get; set; }
+
+        /// <summary>
+        /// Set when this sale came from converting a Quote — traceability only, doesn't
+        /// affect anything about how the sale itself behaves.
+        /// </summary>
+        public int? QuoteId { get; set; }
 
         /// <summary>
         /// "Completed" or "Cancelled".
@@ -44,7 +56,8 @@ namespace SecureSistem.Models
         public Branch Branch { get; set; } = null!;
         public Warehouse Warehouse { get; set; } = null!;
         public Customer? Customer { get; set; }
-        public CashSession CashSession { get; set; } = null!;
+        public CashSession? CashSession { get; set; }
+        public Quote? Quote { get; set; }
         public User User { get; set; } = null!;
         public Company Company { get; set; } = null!;
         public ICollection<SaleItem> Items { get; set; } = new List<SaleItem>();

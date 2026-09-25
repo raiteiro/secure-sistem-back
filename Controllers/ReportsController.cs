@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
+using SecureSistem.DTOs.Common;
 using SecureSistem.DTOs.Reports;
 
 namespace SecureSistem.Controllers
@@ -218,11 +219,12 @@ namespace SecureSistem.Controllers
         /// and date range (matched against ClosedAt). Defaults to the current month to date.
         /// </summary>
         [HttpGet("cashier-closeouts")]
-        [ProducesResponseType(typeof(List<CashierCloseoutResponse>), 200)]
+        [ProducesResponseType(typeof(PagedResponse<CashierCloseoutResponse>), 200)]
         [ProducesResponseType(400)]
-        public async Task<ActionResult<List<CashierCloseoutResponse>>> GetCashierCloseouts(
+        public async Task<ActionResult<PagedResponse<CashierCloseoutResponse>>> GetCashierCloseouts(
             [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-            [FromQuery] int? userId, [FromQuery] int? branchId)
+            [FromQuery] int? userId, [FromQuery] int? branchId,
+            [FromQuery] int? page, [FromQuery] int? pageSize)
         {
             var (rangeStart, rangeEndExclusive) = ResolveDateRange(from, to);
             if (rangeStart > rangeEndExclusive)
@@ -242,20 +244,26 @@ namespace SecureSistem.Controllers
             if (branchId is not null)
                 query = query.Where(s => s.CashRegister.BranchId == branchId);
 
-            var sessions = await query.OrderByDescending(s => s.ClosedAt).ToListAsync();
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
+            var sessions = await query
+                .OrderByDescending(s => s.ClosedAt)
+                .ApplyPage(normalizedPage, normalizedPageSize)
+                .ToListAsync();
             var sessionIds = sessions.Select(s => s.Id).ToList();
 
             var paymentTotals = await _context.Payments
-                .Where(p => sessionIds.Contains(p.Sale.CashSessionId) && p.Sale.Status != "Cancelled")
+                .Where(p => p.Sale.CashSessionId != null && sessionIds.Contains(p.Sale.CashSessionId.Value) && p.Sale.Status != "Cancelled")
                 .GroupBy(p => new { p.Sale.CashSessionId, p.Method })
                 .Select(g => new { g.Key.CashSessionId, g.Key.Method, Total = g.Sum(p => p.Amount) })
                 .ToListAsync();
 
             var salesCounts = await _context.Sales
-                .Where(s => sessionIds.Contains(s.CashSessionId) && s.Status != "Cancelled")
+                .Where(s => s.CashSessionId != null && sessionIds.Contains(s.CashSessionId.Value) && s.Status != "Cancelled")
                 .GroupBy(s => s.CashSessionId)
                 .Select(g => new { CashSessionId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(g => g.CashSessionId, g => g.Count);
+                .ToDictionaryAsync(g => g.CashSessionId!.Value, g => g.Count);
 
             var refundTotals = await _context.Returns
                 .Where(r => sessionIds.Contains(r.CashSessionId))
@@ -289,7 +297,7 @@ namespace SecureSistem.Controllers
                 Difference = session.Difference
             }).ToList();
 
-            return Ok(result);
+            return Ok(result.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>

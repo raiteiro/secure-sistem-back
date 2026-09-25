@@ -1801,3 +1801,582 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918005802_AddProductCombos'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [IsCombo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918005802_AddProductCombos'
+)
+BEGIN
+    CREATE TABLE [ProductComboItems] (
+        [Id] int NOT NULL IDENTITY,
+        [ComboProductId] int NOT NULL,
+        [ComponentProductId] int NOT NULL,
+        [Quantity] decimal(18,4) NOT NULL,
+        [CompanyId] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_ProductComboItems] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ProductComboItems_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductComboItems_Products_ComboProductId] FOREIGN KEY ([ComboProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductComboItems_Products_ComponentProductId] FOREIGN KEY ([ComponentProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918005802_AddProductCombos'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_ProductComboItems_ComboProductId_ComponentProductId] ON [ProductComboItems] ([ComboProductId], [ComponentProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918005802_AddProductCombos'
+)
+BEGIN
+    CREATE INDEX [IX_ProductComboItems_CompanyId] ON [ProductComboItems] ([CompanyId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918005802_AddProductCombos'
+)
+BEGIN
+    CREATE INDEX [IX_ProductComboItems_ComponentProductId] ON [ProductComboItems] ([ComponentProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918005802_AddProductCombos'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260918005802_AddProductCombos', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [CommissionType] nvarchar(20) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [CommissionValue] decimal(18,2) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [SupplierId] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    ALTER TABLE [InventoryMovements] ADD [SupplierId] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE TABLE [Suppliers] (
+        [Id] int NOT NULL IDENTITY,
+        [Name] nvarchar(200) NOT NULL,
+        [TaxId] nvarchar(50) NULL,
+        [Phone] nvarchar(20) NULL,
+        [Email] nvarchar(200) NULL,
+        [Address] nvarchar(300) NULL,
+        [IsConsignor] bit NOT NULL,
+        [CompanyId] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        [ModifiedAt] datetime2 NULL,
+        [ModifiedBy] nvarchar(100) NULL,
+        CONSTRAINT [PK_Suppliers] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_Suppliers_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE TABLE [ConsignmentSettlements] (
+        [Id] int NOT NULL IDENTITY,
+        [SupplierId] int NOT NULL,
+        [CompanyId] int NOT NULL,
+        [TotalAmount] decimal(18,2) NOT NULL,
+        [Notes] nvarchar(500) NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_ConsignmentSettlements] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ConsignmentSettlements_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ConsignmentSettlements_Suppliers_SupplierId] FOREIGN KEY ([SupplierId]) REFERENCES [Suppliers] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE TABLE [ConsignmentSales] (
+        [Id] int NOT NULL IDENTITY,
+        [SaleItemId] int NOT NULL,
+        [ProductId] int NOT NULL,
+        [SupplierId] int NOT NULL,
+        [CompanyId] int NOT NULL,
+        [Quantity] decimal(18,4) NOT NULL,
+        [SaleAmount] decimal(18,2) NOT NULL,
+        [ConsignorAmount] decimal(18,2) NOT NULL,
+        [StoreAmount] decimal(18,2) NOT NULL,
+        [IsVoided] bit NOT NULL,
+        [SettlementId] int NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_ConsignmentSales] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ConsignmentSales_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ConsignmentSales_ConsignmentSettlements_SettlementId] FOREIGN KEY ([SettlementId]) REFERENCES [ConsignmentSettlements] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ConsignmentSales_Products_ProductId] FOREIGN KEY ([ProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ConsignmentSales_SaleItems_SaleItemId] FOREIGN KEY ([SaleItemId]) REFERENCES [SaleItems] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ConsignmentSales_Suppliers_SupplierId] FOREIGN KEY ([SupplierId]) REFERENCES [Suppliers] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_Products_SupplierId] ON [Products] ([SupplierId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_InventoryMovements_SupplierId] ON [InventoryMovements] ([SupplierId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_ConsignmentSales_CompanyId] ON [ConsignmentSales] ([CompanyId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_ConsignmentSales_ProductId] ON [ConsignmentSales] ([ProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_ConsignmentSales_SaleItemId] ON [ConsignmentSales] ([SaleItemId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_ConsignmentSales_SettlementId] ON [ConsignmentSales] ([SettlementId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_ConsignmentSales_SupplierId_SettlementId] ON [ConsignmentSales] ([SupplierId], [SettlementId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_ConsignmentSettlements_CompanyId] ON [ConsignmentSettlements] ([CompanyId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE INDEX [IX_ConsignmentSettlements_SupplierId] ON [ConsignmentSettlements] ([SupplierId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_Suppliers_CompanyId_Name] ON [Suppliers] ([CompanyId], [Name]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    ALTER TABLE [InventoryMovements] ADD CONSTRAINT [FK_InventoryMovements_Suppliers_SupplierId] FOREIGN KEY ([SupplierId]) REFERENCES [Suppliers] ([Id]) ON DELETE NO ACTION;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    ALTER TABLE [Products] ADD CONSTRAINT [FK_Products_Suppliers_SupplierId] FOREIGN KEY ([SupplierId]) REFERENCES [Suppliers] ([Id]) ON DELETE NO ACTION;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260918012653_AddSuppliersAndConsignment'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260918012653_AddSuppliersAndConsignment', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    DECLARE @var3 sysname;
+    SELECT @var3 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[Sales]') AND [c].[name] = N'CashSessionId');
+    IF @var3 IS NOT NULL EXEC(N'ALTER TABLE [Sales] DROP CONSTRAINT [' + @var3 + '];');
+    ALTER TABLE [Sales] ALTER COLUMN [CashSessionId] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    ALTER TABLE [Sales] ADD [QuoteId] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE TABLE [PurchaseOrders] (
+        [Id] int NOT NULL IDENTITY,
+        [FolioNumber] int NOT NULL,
+        [SupplierId] int NOT NULL,
+        [WarehouseId] int NOT NULL,
+        [UserId] int NOT NULL,
+        [CompanyId] int NOT NULL,
+        [Status] nvarchar(20) NOT NULL,
+        [Notes] nvarchar(500) NULL,
+        [Total] decimal(18,2) NOT NULL,
+        [ReceivedAt] datetime2 NULL,
+        [ReceivedBy] nvarchar(100) NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        [ModifiedAt] datetime2 NULL,
+        [ModifiedBy] nvarchar(100) NULL,
+        CONSTRAINT [PK_PurchaseOrders] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_PurchaseOrders_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_PurchaseOrders_Suppliers_SupplierId] FOREIGN KEY ([SupplierId]) REFERENCES [Suppliers] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_PurchaseOrders_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_PurchaseOrders_Warehouses_WarehouseId] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE TABLE [Quotes] (
+        [Id] int NOT NULL IDENTITY,
+        [FolioNumber] int NOT NULL,
+        [BranchId] int NOT NULL,
+        [CustomerId] int NULL,
+        [UserId] int NOT NULL,
+        [CompanyId] int NOT NULL,
+        [Status] nvarchar(20) NOT NULL,
+        [ExpiresAt] datetime2 NULL,
+        [Notes] nvarchar(500) NULL,
+        [Subtotal] decimal(18,2) NOT NULL,
+        [DiscountTotal] decimal(18,2) NOT NULL,
+        [TaxTotal] decimal(18,2) NOT NULL,
+        [Total] decimal(18,2) NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        [ModifiedAt] datetime2 NULL,
+        [ModifiedBy] nvarchar(100) NULL,
+        CONSTRAINT [PK_Quotes] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_Quotes_Branches_BranchId] FOREIGN KEY ([BranchId]) REFERENCES [Branches] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Quotes_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Quotes_Customers_CustomerId] FOREIGN KEY ([CustomerId]) REFERENCES [Customers] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Quotes_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE TABLE [PurchaseOrderItems] (
+        [Id] int NOT NULL IDENTITY,
+        [PurchaseOrderId] int NOT NULL,
+        [ProductId] int NOT NULL,
+        [Quantity] decimal(18,4) NOT NULL,
+        [UnitCost] decimal(18,2) NOT NULL,
+        [Total] decimal(18,2) NOT NULL,
+        [QuantityReceived] decimal(18,4) NOT NULL,
+        CONSTRAINT [PK_PurchaseOrderItems] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_PurchaseOrderItems_Products_ProductId] FOREIGN KEY ([ProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_PurchaseOrderItems_PurchaseOrders_PurchaseOrderId] FOREIGN KEY ([PurchaseOrderId]) REFERENCES [PurchaseOrders] ([Id]) ON DELETE CASCADE
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE TABLE [QuoteItems] (
+        [Id] int NOT NULL IDENTITY,
+        [QuoteId] int NOT NULL,
+        [ProductId] int NOT NULL,
+        [Quantity] decimal(18,4) NOT NULL,
+        [UnitPrice] decimal(18,2) NOT NULL,
+        [DiscountAmount] decimal(18,2) NOT NULL,
+        [TaxRateValue] decimal(9,4) NOT NULL,
+        [TaxAmount] decimal(18,2) NOT NULL,
+        [Subtotal] decimal(18,2) NOT NULL,
+        [Total] decimal(18,2) NOT NULL,
+        CONSTRAINT [PK_QuoteItems] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_QuoteItems_Products_ProductId] FOREIGN KEY ([ProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_QuoteItems_Quotes_QuoteId] FOREIGN KEY ([QuoteId]) REFERENCES [Quotes] ([Id]) ON DELETE CASCADE
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    EXEC(N'CREATE UNIQUE INDEX [IX_Sales_QuoteId] ON [Sales] ([QuoteId]) WHERE [QuoteId] IS NOT NULL');
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_PurchaseOrderItems_ProductId] ON [PurchaseOrderItems] ([ProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_PurchaseOrderItems_PurchaseOrderId] ON [PurchaseOrderItems] ([PurchaseOrderId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_PurchaseOrders_CompanyId_FolioNumber] ON [PurchaseOrders] ([CompanyId], [FolioNumber]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_PurchaseOrders_SupplierId] ON [PurchaseOrders] ([SupplierId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_PurchaseOrders_UserId] ON [PurchaseOrders] ([UserId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_PurchaseOrders_WarehouseId] ON [PurchaseOrders] ([WarehouseId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_QuoteItems_ProductId] ON [QuoteItems] ([ProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_QuoteItems_QuoteId] ON [QuoteItems] ([QuoteId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_Quotes_BranchId] ON [Quotes] ([BranchId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_Quotes_CompanyId_FolioNumber] ON [Quotes] ([CompanyId], [FolioNumber]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_Quotes_CustomerId] ON [Quotes] ([CustomerId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    CREATE INDEX [IX_Quotes_UserId] ON [Quotes] ([UserId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    ALTER TABLE [Sales] ADD CONSTRAINT [FK_Sales_Quotes_QuoteId] FOREIGN KEY ([QuoteId]) REFERENCES [Quotes] ([Id]) ON DELETE NO ACTION;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921141507_AddQuotesAndPurchaseOrders'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260921141507_AddQuotesAndPurchaseOrders', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+

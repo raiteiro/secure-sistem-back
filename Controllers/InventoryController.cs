@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
+using SecureSistem.DTOs.Common;
 using SecureSistem.DTOs.Inventory;
 using SecureSistem.Models;
 
@@ -30,9 +31,10 @@ namespace SecureSistem.Controllers
         /// filtered by product or warehouse. System administrators see every company's.
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(List<InventoryResponse>), 200)]
-        public async Task<ActionResult<List<InventoryResponse>>> GetAll(
-            [FromQuery] int? productId, [FromQuery] int? warehouseId, [FromQuery] bool lowStockOnly = false)
+        [ProducesResponseType(typeof(PagedResponse<InventoryResponse>), 200)]
+        public async Task<ActionResult<PagedResponse<InventoryResponse>>> GetAll(
+            [FromQuery] int? productId, [FromQuery] int? warehouseId, [FromQuery] bool lowStockOnly = false,
+            [FromQuery] int? page = null, [FromQuery] int? pageSize = null)
         {
             var query = _context.Inventories
                 .Include(i => i.Product)
@@ -51,12 +53,16 @@ namespace SecureSistem.Controllers
             if (lowStockOnly)
                 query = query.Where(i => i.MinStock != null && i.Quantity <= i.MinStock);
 
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
             var inventory = await query
                 .OrderBy(i => i.Product.Name)
+                .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(i => MapToResponse(i))
                 .ToListAsync();
 
-            return Ok(inventory);
+            return Ok(inventory.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>

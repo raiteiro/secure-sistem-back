@@ -52,6 +52,46 @@ trabajo normal (ver `CLAUDE.md`).
 
 ## Funcionalidad pendiente (del roadmap "qué le falta a un sistema base")
 
+- [ ] **Cotizaciones no se pueden editar, solo cancelar.** `QuotesController`
+  tiene `Create`/`Cancel`/`ConvertToSale` pero no `Update` — si el cliente
+  pide cambiar cantidades/productos de una cotización ya creada, hoy hay
+  que cancelarla y crear una nueva (pierde el folio original). Agregar un
+  `POST /api/quotes/{id}/update` si se vuelve un flujo frecuente.
+- [ ] **Órdenes de compra no se pueden editar ni agregar/quitar líneas**
+  después de creadas — mismo caso que Cotizaciones, solo `Cancel` (y solo
+  si nada se ha recibido todavía).
+- [ ] **Combos: la composición no se snapshotea al vender.** `SaleItem`/
+  `ReturnItem` no guardan qué componentes tenía el combo al momento de la
+  venta — `SalesController.Cancel`/`ReturnsController.Create` consultan la
+  composición **actual** (`ProductComboItem` activos) del combo para
+  reponer stock. Si alguien edita los componentes de un combo (quita/agrega
+  productos) entre la venta y una cancelación/devolución posterior, se
+  repone la composición nueva, no la que realmente se vendió. Para
+  productos normales no pasa (el precio/impuesto sí se snapshotea en
+  `SaleItem`). Bajo riesgo mientras los combos no cambien de composición
+  seguido, pero si se vuelve un problema real, la solución es snapshotear
+  los componentes del combo en una tabla nueva al momento de la venta.
+
+- [ ] **Consignación: devolución de una venta ya liquidada no se reconcilia
+  sola.** Si se devuelve (total o parcialmente) un artículo consignado cuya
+  `ConsignmentSale` ya fue pagada al consignador (`SettlementId` no nulo),
+  `ReturnsController.Create` **no** ajusta el monto — solo deja un
+  `LogWarning` (`ILogger`, no visible para el usuario) para que alguien lo
+  reconcilie a mano. Revertir un pago que ya salió requiere una decisión de
+  negocio (¿se descuenta del próximo pago? ¿se le pide de vuelta al
+  consignador?) que no se puede automatizar sin más contexto. Caso poco
+  común (requiere que la devolución llegue después de una liquidación), pero
+  si se vuelve frecuente, conviene al menos exponer estas devoluciones en
+  algún reporte visible en vez de solo loguearlas.
+- [ ] **Consignación no cubre combos.** Si el componente de un combo
+  (`ProductComboItem.ComponentProductId`) es a su vez un producto atribuido
+  a un consignador, vender el combo descuenta su stock igual que cualquier
+  componente, pero **no genera ningún `ConsignmentSale`** — no hay
+  `SaleItem` propio para ese componente al que atribuírselo (el combo es
+  una sola línea de venta). Si se necesita cobrar consignación dentro de
+  combos, hay que diseñar cómo prorratear el precio del combo entre sus
+  componentes primero.
+
 - [x] ~~`CashSession.Close` no suma ventas en efectivo al `ExpectedAmount`~~ —
   **resuelto**: ahora suma `OpeningAmount` más los `Payment.Amount` con
   `Method == "Cash"` de las ventas cuyo `Sale.CashSessionId` es el de la
@@ -82,8 +122,22 @@ trabajo normal (ver `CLAUDE.md`).
   que corresponda.
 - [ ] Tabla de auditoría de acciones (más allá de los campos `CreatedBy`/`ModifiedBy`
   que ya existen en cada entidad).
-- [ ] Paginación y filtrado en los listados (`Users`, `Roles`, `NavigationRoutes`,
-  `Companies` devuelven todo sin paginar).
+- [x] ~~Paginación y filtrado en tablas transaccionales y catálogos grandes~~ —
+  **resuelto** para las 11 de prioridad alta/media según `pagination.md` (auditoría del
+  frontend): `GET /api/sales`, `/api/returns`, `/api/cashsessions`,
+  `/api/inventorymovements`, `/api/consignment/sales`, `/api/consignment/settlements`
+  (alta, con `from`/`to`) y `GET /api/products`, `/api/customers`, `/api/inventory`,
+  `/api/users`, `/api/reports/cashier-closeouts` (media, sin `from`/`to` — son catálogos,
+  no eventos en el tiempo) ya devuelven `PagedResponse<T>`
+  (`items`/`page`/`pageSize`/`totalCount`/`totalPages`). Ver `Common/PaginationHelper.cs`
+  y `CLAUDE.md` → "Paginación en listados" para el contrato a seguir en endpoints nuevos.
+  **Decisión tomada — no se paginan:** el resto de prioridad baja según `pagination.md`
+  (`Branches`, `CashRegisters`, `Categories`, `Companies`, `Roles`, `Roles/{id}/routes`,
+  `Roles/{id}/permissions`, `Suppliers`, `TaxRates`, `Warehouses`) se queda sin paginar
+  — catálogos acotados, no hace falta revisarlos de nuevo por esto.
+  `GET /api/navigationroutes/tree` y `/my-tree` **nunca** se paginan (regla permanente,
+  no una decisión de tamaño): el frontend arma el menú completo a partir de la
+  respuesta completa. Ver `CLAUDE.md` → "Paginación en listados".
 - [ ] Versionado de API (`/api/v1/...`).
 - [ ] Health checks.
 - [ ] **Mensajes de validación automática de ASP.NET Core en inglés**: todos los

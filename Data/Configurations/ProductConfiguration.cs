@@ -18,6 +18,8 @@ namespace SecureSistem.Data.Configurations
             builder.Property(x => x.Price).HasColumnType("decimal(18,2)");
             builder.Property(x => x.Cost).HasColumnType("decimal(18,2)");
             builder.Property(x => x.ImagePath).HasMaxLength(500);
+            builder.Property(x => x.CommissionType).HasMaxLength(20);
+            builder.Property(x => x.CommissionValue).HasColumnType("decimal(18,2)");
             builder.Property(x => x.CreatedBy).IsRequired().HasMaxLength(100);
             builder.Property(x => x.ModifiedBy).HasMaxLength(100);
 
@@ -34,6 +36,11 @@ namespace SecureSistem.Data.Configurations
             builder.HasOne(x => x.TaxRate)
                 .WithMany()
                 .HasForeignKey(x => x.TaxRateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne(x => x.Supplier)
+                .WithMany()
+                .HasForeignKey(x => x.SupplierId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             // SKU unique per company, but only enforced among products that actually have one.

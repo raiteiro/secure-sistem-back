@@ -17,6 +17,12 @@ namespace SecureSistem.DTOs.Products
         public decimal? TaxRateValue { get; set; }
         public int CompanyId { get; set; }
         public bool IsActive { get; set; }
+        public bool IsCombo { get; set; }
+        public int? SupplierId { get; set; }
+        public string? SupplierName { get; set; }
+        public bool SupplierIsConsignor { get; set; }
+        public string? CommissionType { get; set; }
+        public decimal? CommissionValue { get; set; }
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime? ModifiedAt { get; set; }

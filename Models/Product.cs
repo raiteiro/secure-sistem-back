@@ -39,6 +39,31 @@ namespace SecureSistem.Models
         public int CompanyId { get; set; }
         public bool IsActive { get; set; } = true;
 
+        /// <summary>
+        /// When true, this product is a combo/kit sold as its own catalog entry (own price,
+        /// tax, image) but carrying no stock of its own — selling it deducts stock from its
+        /// ProductComboItems components instead. See ProductComboItem.
+        /// </summary>
+        public bool IsCombo { get; set; } = false;
+
+        /// <summary>
+        /// The product's primary/consignor supplier. When set and Supplier.IsConsignor is
+        /// true, every sale of this product auto-generates a ConsignmentSale using
+        /// CommissionType/CommissionValue below. Optional metadata (who to reorder from)
+        /// when the supplier isn't a consignor.
+        /// </summary>
+        public int? SupplierId { get; set; }
+
+        /// <summary>
+        /// "Percentage" (CommissionValue is the store's cut, e.g. 30 = store keeps 30%, pays
+        /// the consignor 70%) or "FixedAmount" (CommissionValue is the peso amount paid to
+        /// the consignor per unit sold, regardless of price). Only meaningful when SupplierId
+        /// is a consignor.
+        /// </summary>
+        public string? CommissionType { get; set; }
+
+        public decimal? CommissionValue { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime? ModifiedAt { get; set; }
@@ -48,5 +73,6 @@ namespace SecureSistem.Models
         public Company Company { get; set; } = null!;
         public Category? Category { get; set; }
         public TaxRate? TaxRate { get; set; }
+        public Supplier? Supplier { get; set; }
     }
 }

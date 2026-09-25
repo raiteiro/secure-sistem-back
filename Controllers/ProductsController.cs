@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
+using SecureSistem.DTOs.Common;
 using SecureSistem.DTOs.Products;
 using SecureSistem.Models;
 
@@ -44,23 +45,29 @@ namespace SecureSistem.Controllers
         /// System administrators see products across every company.
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(List<ProductResponse>), 200)]
-        public async Task<ActionResult<List<ProductResponse>>> GetAll()
+        [ProducesResponseType(typeof(PagedResponse<ProductResponse>), 200)]
+        public async Task<ActionResult<PagedResponse<ProductResponse>>> GetAll(
+            [FromQuery] int? page, [FromQuery] int? pageSize)
         {
             var query = _context.Products
                 .Include(p => p.Category)
                 .Include(p => p.TaxRate)
+                .Include(p => p.Supplier)
                 .Where(p => p.IsActive);
 
             if (!IsSystemAdmin())
                 query = query.Where(p => p.CompanyId == GetCompanyId());
 
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
             var products = await query
                 .OrderBy(p => p.Name)
+                .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(p => MapToResponse(p))
                 .ToListAsync();
 
-            return Ok(products);
+            return Ok(products.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>
@@ -74,6 +81,7 @@ namespace SecureSistem.Controllers
             var query = _context.Products
                 .Include(p => p.Category)
                 .Include(p => p.TaxRate)
+                .Include(p => p.Supplier)
                 .Where(p => p.Id == id);
 
             if (!IsSystemAdmin())
@@ -117,6 +125,11 @@ namespace SecureSistem.Controllers
             if (validationError is not null)
                 return BadRequest(new { message = validationError });
 
+            var (supplierValidationError, isConsignor) = await ValidateSupplierAndCommission(
+                request.SupplierId, request.CommissionType, request.CommissionValue, companyId);
+            if (supplierValidationError is not null)
+                return BadRequest(new { message = supplierValidationError });
+
             if (request.Sku is not null)
             {
                 var skuExists = await _context.Products
@@ -132,9 +145,13 @@ namespace SecureSistem.Controllers
                 Description = request.Description,
                 Unit = request.Unit,
                 Price = request.Price,
-                Cost = request.Cost,
+                Cost = ResolveCost(isConsignor, request.CommissionType, request.CommissionValue, request.Price, request.Cost),
                 CategoryId = request.CategoryId,
                 TaxRateId = request.TaxRateId,
+                IsCombo = request.IsCombo,
+                SupplierId = request.SupplierId,
+                CommissionType = request.SupplierId is null ? null : request.CommissionType,
+                CommissionValue = request.SupplierId is null ? null : request.CommissionValue,
                 CompanyId = companyId,
                 IsActive = true,
                 CreatedAt = DateTimeHelper.Now,
@@ -175,6 +192,11 @@ namespace SecureSistem.Controllers
             if (validationError is not null)
                 return BadRequest(new { message = validationError });
 
+            var (supplierValidationError, isConsignor) = await ValidateSupplierAndCommission(
+                request.SupplierId, request.CommissionType, request.CommissionValue, product.CompanyId);
+            if (supplierValidationError is not null)
+                return BadRequest(new { message = supplierValidationError });
+
             if (request.Sku is not null)
             {
                 var skuExists = await _context.Products
@@ -183,14 +205,25 @@ namespace SecureSistem.Controllers
                     return BadRequest(new { message = "Ya existe un producto con este SKU." });
             }
 
+            if (product.IsCombo && !request.IsCombo)
+            {
+                var hasComboItems = await _context.ProductComboItems.AnyAsync(ci => ci.ComboProductId == id && ci.IsActive);
+                if (hasComboItems)
+                    return BadRequest(new { message = "No se puede quitar la marca de combo mientras tenga componentes asignados. Quita los componentes primero." });
+            }
+
             product.Sku = request.Sku;
             product.Name = request.Name;
             product.Description = request.Description;
             product.Unit = request.Unit;
             product.Price = request.Price;
-            product.Cost = request.Cost;
+            product.Cost = ResolveCost(isConsignor, request.CommissionType, request.CommissionValue, request.Price, request.Cost);
             product.CategoryId = request.CategoryId;
             product.TaxRateId = request.TaxRateId;
+            product.IsCombo = request.IsCombo;
+            product.SupplierId = request.SupplierId;
+            product.CommissionType = request.SupplierId is null ? null : request.CommissionType;
+            product.CommissionValue = request.SupplierId is null ? null : request.CommissionValue;
             product.ModifiedAt = DateTimeHelper.Now;
             product.ModifiedBy = currentUser;
 
@@ -291,6 +324,135 @@ namespace SecureSistem.Controllers
             return Ok(MapToResponse(product));
         }
 
+        /// <summary>
+        /// Gets the components (and quantities) that make up a combo product. System
+        /// administrators can access products from any company.
+        /// </summary>
+        [HttpGet("{id:int}/combo-items")]
+        [ProducesResponseType(typeof(List<ComboItemResponse>), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<List<ComboItemResponse>>> GetComboItems(int id)
+        {
+            var productQuery = _context.Products.Where(p => p.Id == id);
+            if (!IsSystemAdmin())
+                productQuery = productQuery.Where(p => p.CompanyId == GetCompanyId());
+
+            var productExists = await productQuery.AnyAsync();
+            if (!productExists)
+                return NotFound(new { message = "Producto no encontrado." });
+
+            var items = await _context.ProductComboItems
+                .Where(ci => ci.ComboProductId == id && ci.IsActive)
+                .Include(ci => ci.ComponentProduct)
+                .Select(ci => new ComboItemResponse
+                {
+                    ComponentProductId = ci.ComponentProductId,
+                    ComponentProductName = ci.ComponentProduct.Name,
+                    ComponentProductSku = ci.ComponentProduct.Sku,
+                    Quantity = ci.Quantity
+                })
+                .OrderBy(i => i.ComponentProductName)
+                .ToListAsync();
+
+            return Ok(items);
+        }
+
+        /// <summary>
+        /// Sets the components of a combo product, replacing all current ones. The product
+        /// must already be marked IsCombo, and every component must be an active, non-combo
+        /// product of the same company (no combos-of-combos). System administrators can
+        /// manage products from any company.
+        /// </summary>
+        [HttpPost("{id:int}/combo-items")]
+        [ProducesResponseType(typeof(List<ComboItemResponse>), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<List<ComboItemResponse>>> AssignComboItems(int id, [FromBody] AssignComboItemsRequest request)
+        {
+            var currentUser = GetCurrentUsername();
+
+            var productQuery = _context.Products.Where(p => p.Id == id);
+            if (!IsSystemAdmin())
+                productQuery = productQuery.Where(p => p.CompanyId == GetCompanyId());
+
+            var product = await productQuery.FirstOrDefaultAsync();
+            if (product is null)
+                return NotFound(new { message = "Producto no encontrado." });
+
+            if (!product.IsCombo)
+                return BadRequest(new { message = "El producto debe estar marcado como combo antes de asignarle componentes." });
+
+            var componentIds = request.Items.Select(i => i.ComponentProductId).ToList();
+            if (componentIds.Distinct().Count() != componentIds.Count)
+                return BadRequest(new { message = "Hay productos duplicados en la lista de componentes." });
+
+            if (componentIds.Contains(id))
+                return BadRequest(new { message = "Un combo no puede incluirse a sí mismo como componente." });
+
+            var components = await _context.Products
+                .Where(p => componentIds.Contains(p.Id) && p.CompanyId == product.CompanyId && p.IsActive)
+                .ToListAsync();
+
+            if (components.Count != componentIds.Count)
+                return BadRequest(new { message = "Uno o más componentes no son válidos (deben ser productos activos de la misma empresa)." });
+
+            var nestedCombo = components.FirstOrDefault(p => p.IsCombo);
+            if (nestedCombo is not null)
+                return BadRequest(new { message = $"'{nestedCombo.Name}' es en sí mismo un combo — no se pueden anidar combos." });
+
+            // Get ALL existing assignments (active and inactive) — never hard-deleted.
+            var existingItems = await _context.ProductComboItems
+                .Where(ci => ci.ComboProductId == id)
+                .ToListAsync();
+
+            var requestByComponentId = request.Items.ToDictionary(i => i.ComponentProductId);
+            var now = DateTimeHelper.Now;
+
+            foreach (var existing in existingItems)
+            {
+                if (requestByComponentId.TryGetValue(existing.ComponentProductId, out var itemRequest))
+                {
+                    existing.IsActive = true;
+                    existing.Quantity = itemRequest.Quantity;
+                }
+                else
+                {
+                    existing.IsActive = false;
+                }
+            }
+
+            var existingComponentIds = existingItems.Select(ci => ci.ComponentProductId).ToHashSet();
+            foreach (var itemRequest in request.Items.Where(i => !existingComponentIds.Contains(i.ComponentProductId)))
+            {
+                _context.ProductComboItems.Add(new ProductComboItem
+                {
+                    ComboProductId = id,
+                    ComponentProductId = itemRequest.ComponentProductId,
+                    Quantity = itemRequest.Quantity,
+                    IsActive = true,
+                    CompanyId = product.CompanyId,
+                    CreatedAt = now,
+                    CreatedBy = currentUser
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Combo items assigned to product {Id}: {Count} components by {User}",
+                id, request.Items.Count, currentUser);
+
+            var componentsById = components.ToDictionary(p => p.Id);
+            var response = request.Items.Select(i => new ComboItemResponse
+            {
+                ComponentProductId = i.ComponentProductId,
+                ComponentProductName = componentsById[i.ComponentProductId].Name,
+                ComponentProductSku = componentsById[i.ComponentProductId].Sku,
+                Quantity = i.Quantity
+            }).OrderBy(i => i.ComponentProductName).ToList();
+
+            return Ok(response);
+        }
+
         private async Task<string?> ValidateCategoryAndTaxRate(int? categoryId, int? taxRateId, int companyId)
         {
             if (categoryId is not null)
@@ -312,12 +474,52 @@ namespace SecureSistem.Controllers
             return null;
         }
 
+        private async Task<(string? Error, bool IsConsignor)> ValidateSupplierAndCommission(int? supplierId, string? commissionType, decimal? commissionValue, int companyId)
+        {
+            if (supplierId is null)
+                return (null, false);
+
+            var supplier = await _context.Suppliers
+                .FirstOrDefaultAsync(s => s.Id == supplierId && s.CompanyId == companyId && s.IsActive);
+            if (supplier is null)
+                return ("El proveedor debe pertenecer a la misma empresa.", false);
+
+            if (supplier.IsConsignor)
+            {
+                if (commissionType is null || commissionValue is null)
+                    return ("Un producto de un proveedor consignador debe tener 'CommissionType' y 'CommissionValue'.", true);
+
+                if (commissionType == "Percentage" && commissionValue > 100)
+                    return ("'CommissionValue' no puede ser mayor a 100 cuando 'CommissionType' es 'Percentage'.", true);
+            }
+
+            return (null, supplier.IsConsignor);
+        }
+
+        /// <summary>
+        /// For a consignment product, Cost isn't something the store paid upfront — it's
+        /// derived from the commission split so sales/margin reports (which read Cost) stay
+        /// consistent with what actually gets paid to the consignor, instead of a manually
+        /// typed value that could drift from it.
+        /// </summary>
+        private static decimal? ResolveCost(bool isConsignor, string? commissionType, decimal? commissionValue, decimal price, decimal? requestedCost)
+        {
+            if (!isConsignor)
+                return requestedCost;
+
+            return commissionType == "FixedAmount"
+                ? commissionValue
+                : price * (1 - (commissionValue ?? 0m) / 100m);
+        }
+
         private async Task LoadRelations(Product product)
         {
             if (product.CategoryId is not null)
                 await _context.Entry(product).Reference(p => p.Category).LoadAsync();
             if (product.TaxRateId is not null)
                 await _context.Entry(product).Reference(p => p.TaxRate).LoadAsync();
+            if (product.SupplierId is not null)
+                await _context.Entry(product).Reference(p => p.Supplier).LoadAsync();
         }
 
         private static ProductResponse MapToResponse(Product product)
@@ -339,6 +541,12 @@ namespace SecureSistem.Controllers
                 TaxRateValue = product.TaxRate?.Rate,
                 CompanyId = product.CompanyId,
                 IsActive = product.IsActive,
+                IsCombo = product.IsCombo,
+                SupplierId = product.SupplierId,
+                SupplierName = product.Supplier?.Name,
+                SupplierIsConsignor = product.Supplier?.IsConsignor ?? false,
+                CommissionType = product.CommissionType,
+                CommissionValue = product.CommissionValue,
                 CreatedAt = product.CreatedAt,
                 CreatedBy = product.CreatedBy,
                 ModifiedAt = product.ModifiedAt,

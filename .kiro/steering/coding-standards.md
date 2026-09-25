@@ -39,6 +39,33 @@ Domain/Interfaces/IUserRepository.cs
 - Usar el campo `IsActive` (bit) para desactivar registros (soft delete)
 - Los listados solo deben mostrar registros activos por defecto
 
+## Paginación en listados
+- Cada vez que se agregue un `GET` nuevo que devuelva una lista, evaluar si necesita
+  paginación **antes** de dar el endpoint por terminado, no como algo a agregar después:
+  - **Tablas transaccionales** (crecen sin límite con el tiempo — ventas, movimientos de
+    inventario, turnos de caja, devoluciones, consignaciones): paginación **y** filtro de
+    rango de fechas (`from`/`to`) son obligatorios desde el día uno.
+  - **Catálogos que pueden crecer mucho** (productos, clientes, inventario, usuarios):
+    paginación recomendada; no necesitan `from`/`to` (no son eventos en el tiempo).
+  - **Catálogos acotados** (sucursales, cajas, categorías, roles, proveedores, impuestos,
+    almacenes): paginación opcional, no urgente — **decisión tomada: se quedan sin
+    paginar**, no hace falta revisarlos de nuevo por esto.
+  - **`GET /api/navigationroutes/tree` y `/my-tree` nunca se paginan, bajo ninguna
+    circunstancia.** Son endpoints del propio sistema base (árbol de navegación), no
+    catálogos de negocio — el frontend arma el menú completo a partir de la respuesta, así
+    que una página parcial rompería la navegación. Esta regla es permanente, no depende
+    del tamaño que llegue a tener el árbol.
+- Contrato: query params `page` (1-based, default `1`) y `pageSize` (default `25`, tope
+  `100`) — usar `Common/PaginationHelper.cs` (`.Normalize()`, `.ApplyPage()`,
+  `.ToPagedResponse()`) en vez de reimplementar el cálculo cada vez.
+- Respuesta: siempre el sobre `PagedResponse<T>` (`DTOs/Common/PagedResponse.cs` — `{
+  items, page, pageSize, totalCount, totalPages }`), nunca un array plano, en cualquier
+  endpoint que pagine.
+- **Migrar un endpoint que ya devolvía `T[]` a este sobre es un breaking change** — avisar
+  al frontend en el mismo turno (su `.service.ts` correspondiente necesita actualizarse a
+  la vez, si no truena iterando un objeto como si fuera arreglo). Ver `pagination.md` en
+  la raíz para el inventario completo de endpoints existentes y su prioridad.
+
 ## Patrones Obligatorios
 - Repositorios genéricos para operaciones CRUD base
 - Repositorios específicos para queries complejas

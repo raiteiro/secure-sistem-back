@@ -19,6 +19,10 @@ namespace SecureSistem.Data
         public DbSet<TaxRate> TaxRates => Set<TaxRate>();
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<Product> Products => Set<Product>();
+        public DbSet<ProductComboItem> ProductComboItems => Set<ProductComboItem>();
+        public DbSet<Supplier> Suppliers => Set<Supplier>();
+        public DbSet<ConsignmentSale> ConsignmentSales => Set<ConsignmentSale>();
+        public DbSet<ConsignmentSettlement> ConsignmentSettlements => Set<ConsignmentSettlement>();
         public DbSet<Inventory> Inventories => Set<Inventory>();
         public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
         public DbSet<Customer> Customers => Set<Customer>();
@@ -29,6 +33,10 @@ namespace SecureSistem.Data
         public DbSet<Payment> Payments => Set<Payment>();
         public DbSet<Return> Returns => Set<Return>();
         public DbSet<ReturnItem> ReturnItems => Set<ReturnItem>();
+        public DbSet<Quote> Quotes => Set<Quote>();
+        public DbSet<QuoteItem> QuoteItems => Set<QuoteItem>();
+        public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+        public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
         public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();

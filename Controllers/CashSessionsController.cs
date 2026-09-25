@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
 using SecureSistem.DTOs.CashSessions;
+using SecureSistem.DTOs.Common;
 using SecureSistem.Models;
 
 namespace SecureSistem.Controllers
@@ -27,14 +28,20 @@ namespace SecureSistem.Controllers
 
         /// <summary>
         /// Gets sessions for the authenticated user's company, newest first, optionally
-        /// filtered by cash register or open/closed status. System administrators see
-        /// every company's.
+        /// filtered by cash register, open/closed status, or opened-date range, and
+        /// paginated. System administrators see every company's.
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(List<CashSessionResponse>), 200)]
-        public async Task<ActionResult<List<CashSessionResponse>>> GetAll(
-            [FromQuery] int? cashRegisterId, [FromQuery] bool? isOpen)
+        [ProducesResponseType(typeof(PagedResponse<CashSessionResponse>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<PagedResponse<CashSessionResponse>>> GetAll(
+            [FromQuery] int? cashRegisterId, [FromQuery] bool? isOpen,
+            [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+            [FromQuery] int? page, [FromQuery] int? pageSize)
         {
+            if (from is not null && to is not null && from.Value.Date > to.Value.Date)
+                return BadRequest(new { message = "La fecha 'from' no puede ser posterior a 'to'." });
+
             var query = _context.CashSessions
                 .Include(s => s.CashRegister)
                 .Include(s => s.User)
@@ -51,12 +58,22 @@ namespace SecureSistem.Controllers
                     ? query.Where(s => s.ClosedAt == null)
                     : query.Where(s => s.ClosedAt != null);
 
+            if (from is not null)
+                query = query.Where(s => s.OpenedAt >= from.Value.Date);
+
+            if (to is not null)
+                query = query.Where(s => s.OpenedAt < to.Value.Date.AddDays(1));
+
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
             var sessions = await query
                 .OrderByDescending(s => s.OpenedAt)
+                .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(s => MapToResponse(s))
                 .ToListAsync();
 
-            return Ok(sessions);
+            return Ok(sessions.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>

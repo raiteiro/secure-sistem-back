@@ -29,5 +29,11 @@ namespace SecureSistem.DTOs.Inventory
 
         [MaxLength(500)]
         public string? Notes { get; set; }
+
+        /// <summary>
+        /// Who delivered this stock — only meaningful for Type == "Purchase" (regular buy-in
+        /// or a consignment receipt).
+        /// </summary>
+        public int? SupplierId { get; set; }
     }
 }

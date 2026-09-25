@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
+using SecureSistem.DTOs.Common;
 using SecureSistem.DTOs.Customers;
 using SecureSistem.Models;
 
@@ -29,20 +30,25 @@ namespace SecureSistem.Controllers
         /// System administrators see customers across every company.
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(List<CustomerResponse>), 200)]
-        public async Task<ActionResult<List<CustomerResponse>>> GetAll()
+        [ProducesResponseType(typeof(PagedResponse<CustomerResponse>), 200)]
+        public async Task<ActionResult<PagedResponse<CustomerResponse>>> GetAll(
+            [FromQuery] int? page, [FromQuery] int? pageSize)
         {
             var query = _context.Customers.Where(c => c.IsActive);
 
             if (!IsSystemAdmin())
                 query = query.Where(c => c.CompanyId == GetCompanyId());
 
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
             var customers = await query
                 .OrderBy(c => c.Name)
+                .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(c => MapToResponse(c))
                 .ToListAsync();
 
-            return Ok(customers);
+            return Ok(customers.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>

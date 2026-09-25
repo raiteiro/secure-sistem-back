@@ -158,12 +158,140 @@ nada de eso aquí.
 
 ## Fase 2 — Valor agregado (después del núcleo)
 
-- [ ] Compras a proveedores (cierra el ciclo del inventario).
-- [ ] Proveedores.
-- [ ] Variantes de producto (talla/color) y combos/kits.
+- [x] Proveedores + Compras + Consignación (cierra el ciclo del inventario).
+  Alcance acordado: sin orden de compra formal (pendiente→recibido) — recibir
+  mercancía de un proveedor (normal o consignador) es solo un movimiento de
+  inventario más (`Type="Purchase"`, ya existía como valor válido, solo
+  nunca se conectó a un proveedor).
+  - `Supplier` (`SuppliersController`, `/api/suppliers`, mismo patrón CRUD
+    que `Categories`/`TaxRates`): catálogo de proveedores + flag
+    `IsConsignor`.
+  - `InventoryMovement.SupplierId` (opcional) — trazabilidad de quién
+    entregó una recepción de mercancía.
+  - `Product.SupplierId` (proveedor primario/consignador) +
+    `CommissionType` (`"Percentage"`/`"FixedAmount"`) + `CommissionValue` —
+    la comisión vive en el producto, no en el proveedor, porque un importe
+    fijo (ej. "$700 por pieza") solo tiene sentido atado a un precio
+    específico. Obligatorio llenar `CommissionType`/`CommissionValue`
+    cuando el proveedor es consignador.
+  - **`Product.Cost` se autocalcula para productos consignados** (ignora lo
+    que mande el formulario y lo deriva de la comisión): `FixedAmount` →
+    `Cost = CommissionValue`; `Percentage` → `Cost = Price × (1 -
+    CommissionValue/100)`. Antes eran dos campos independientes (`Cost`
+    nunca se usaba en ningún cálculo) que fácilmente podían quedar
+    inconsistentes entre sí — con esto, reportes de venta/margen futuros
+    que lean `Cost` cuadran con lo que realmente se le paga al consignador.
+    Verificado en vivo: mandar `cost: 999` con comisión `Percentage: 30`
+    sobre `price: 1000` guardó `cost: 700` (ignoró el 999); `FixedAmount:
+    700` guardó `cost: 700`.
+  - **Al vender un producto consignado**, `SalesController.Create` genera
+    automáticamente un `ConsignmentSale` (snapshot del split al momento de
+    la venta, como ya hace `SaleItem` con precio/impuesto): `Percentage`
+    → el valor es lo que se queda la tienda (ej. 30 = tienda se queda 30%,
+    consignador recibe 70%); `FixedAmount` → el valor es el monto fijo por
+    unidad que se le paga al consignador, sin importar el precio de venta.
+  - `ConsignmentController` (`/api/consignment`): `GET /balances` (cuánto
+    se le debe a cada consignador ahora mismo), `GET /sales` (bitácora,
+    filtrable por proveedor/pendiente), `POST /settlements` (liquida de un
+    golpe todo lo pendiente de un proveedor, queda `ConsignmentSettlement`
+    con historial), `GET /settlements`.
+  - Cancelar una venta con consignación ya liquidada **se bloquea**
+    (mensaje claro); si no está liquidada, se anula automáticamente
+    (`ConsignmentSale.IsVoided`). Una devolución (parcial o total) reduce
+    proporcionalmente lo que se le debe al consignador si aún no se ha
+    liquidado; si ya se liquidó, se deja un `LogWarning` para reconciliar a
+    mano en vez de tocar un pago ya hecho (ver `TECH_DEBT.md`).
+  - Pantallas nuevas: **Proveedores** (`/catalogo/proveedores`, dentro de
+    "Catálogo") y **Consignaciones** (`/consignaciones`, ítem suelto junto
+    a "Reportes"), ambas `IsDefaultForNewRoles = true` con backfill para
+    Empresa Demo y VetPet (empresas activas) y todos sus roles activos.
+  - Verificado en vivo: producto consignado con comisión 30% (tienda se
+    queda 30%), venta de 2 piezas a $1000 generó `ConsignmentSale` con
+    `consignorAmount=1400`/`storeAmount=600` correctos; liquidar dejó el
+    balance pendiente en $0; cancelar una venta ya liquidada se bloqueó
+    correctamente; una devolución parcial (1 de 2 piezas, venta sin
+    liquidar) redujo el `ConsignmentSale` proporcionalmente
+    (`quantity` 2→1, `consignorAmount` 1400→700).
+- [x] Variantes de producto (talla/color) y combos/kits. Alcance acordado:
+  "variantes" no necesitaba modelo nuevo — cada talla/color ya es un
+  `Product` independiente (su propio SKU/stock) bajo la misma `Category`, y
+  `Product.Unit` (texto libre) + `Quantity` (`decimal(18,4)` en toda la
+  cadena) ya soportan vender por metro/kilo/litro con decimales. Lo único
+  nuevo fue **combos/kits**:
+  - `Product.IsCombo` — el combo es un `Product` más (reutiliza precio,
+    impuesto, imagen, categoría), sin inventario propio.
+  - `ProductComboItem` (nuevo): qué productos lo componen y en qué
+    cantidad cada uno. `GET/POST /api/products/{id}/combo-items`
+    (reemplazo completo, calcado del patrón de `/routes` y `/permissions`
+    en `RolesController`) — exige que el producto ya esté marcado
+    `IsCombo`, que los componentes sean productos activos de la misma
+    empresa, y prohíbe combos anidados (un componente no puede ser a su
+    vez un combo).
+  - Al vender un combo, **no se descuenta stock del combo en sí** — se
+    descuenta el de cada componente, multiplicado por la cantidad de
+    combos vendidos. `SalesController.Cancel` y `ReturnsController.Create`
+    hacen el espejo (reponen cada componente). Se extrajo
+    `Common/InventoryStockHelper` (ya se repetía la misma lógica de
+    ajustar `Inventory`/`InventoryMovement` en 3 controllers distintos).
+  - Verificado en vivo: combo con 2x Bombon + 1x Chocolate, venta
+    descontó exactamente eso de cada componente (no tocó inventario del
+    combo, que no tiene), y cancelar la venta repuso ambos componentes
+    correctamente.
 - [ ] Listas de precios (mayoreo vs. menudeo, precios por cliente).
 - [ ] Apartados / ventas a crédito.
-- [ ] Cotizaciones que se convierten en venta.
+- [x] Cotizaciones que se convierten en venta — junto con **ventas directas
+  sin turno de caja** y **orden de compra formal**, pedidos en el mismo turno
+  de trabajo. Alcance acordado:
+  - `Quote`/`QuoteItem` (nuevo, `QuotesController`, `/api/quotes`): espejo de
+    `Sale`/`SaleItem` en estructura (folio por empresa, precios/impuestos
+    snapshoteados al crear), pero **crear/editar una cotización nunca toca
+    inventario** — solo es una propuesta. Estados: `Open` → `Converted` o
+    `Cancelled`.
+  - **`Sale.CashSessionId` pasa a ser opcional** (`int?`). Con turno de caja
+    = venta de mostrador (igual que siempre, exige turno abierto y propio).
+    Sin turno = **venta directa** (ej. facturada, pagada por transferencia)
+    — mismos pagos exigidos sumando el total exacto, solo sin turno que
+    reconciliar. `CashSession.Close` sigue sin verse afectado (solo suma
+    pagos de ventas con `CashSessionId` igual al turno que se cierra, las
+    directas nunca entran ahí). `Sale.Cancel` ya no exige turno abierto
+    cuando la venta no tiene uno.
+  - Para no duplicar la lógica compleja de venta (combos, consignación,
+    impuestos, folio, stock) en dos lugares, se extrajo de
+    `SalesController.Create` a un servicio nuevo `ISaleService`
+    (`Services/SaleService.cs`), usado tanto por `SalesController` como por
+    `QuotesController.ConvertToSale`. `SaleLineItem` (interno, no expuesto
+    en la API pública) permite que la conversión de cotización fije el
+    precio unitario **tal como se cotizó** (aunque el precio de catálogo
+    cambie después) sin abrirle esa puerta a una venta normal del POS — el
+    impuesto sí se recalcula con la tasa vigente al convertir.
+  - `POST /api/quotes/{id}/convert-to-sale`: valida stock actual y lo
+    descuenta igual que cualquier venta (una cotización nunca reserva
+    stock), acepta `cashSessionId` opcional (venta de mostrador vs.
+    directa). `Sale.QuoteId` queda ligado para trazabilidad.
+  - **Orden de compra formal** (retomando lo que se había simplificado a
+    "entrada directa"): `PurchaseOrder`/`PurchaseOrderItem` (nuevo,
+    `PurchaseOrdersController`, `/api/purchaseorders`). Crear la orden
+    **no** toca inventario — `POST /api/purchaseorders/{id}/receive` sí,
+    vía el mismo `InventoryStockHelper` de siempre (ahora acepta
+    `supplierId` opcional para etiquetar el movimiento sin la consulta
+    frágil que se necesitaría para adivinarlo después). Soporta
+    **recepción parcial** (`PurchaseOrderItem.QuantityReceived`, puede
+    llamarse `/receive` más de una vez si la entrega llega en partes); la
+    orden pasa a `Received` solo cuando todas las líneas están completas.
+    `Cancel` solo si nada se ha recibido todavía.
+  - Pantallas nuevas: **Cotizaciones** (`/cotizaciones`) y **Órdenes de
+    compra** (`/ordenes-compra`), ambas ítems sueltos junto a
+    "Consignaciones", `IsDefaultForNewRoles = true`, con backfill para
+    Empresa Demo y VetPet (empresas activas) y todos sus roles activos.
+  - Verificado en vivo de punta a punta: cotización no tocó stock; se
+    convirtió a venta directa (sin turno) con precio/impuesto correctos,
+    descontó stock, y `cashSessionId` quedó `null`/`quoteId` quedó ligado;
+    cancelar esa venta directa repuso el stock sin exigir turno; una venta
+    normal del POS (con turno) siguió funcionando idéntico (sin regresión
+    del refactor). Orden de compra: recepción parcial (6 de 10) dejó la
+    orden en `Pending` con el stock correcto, completar el resto la pasó a
+    `Received`, y los movimientos de inventario quedaron correctamente
+    etiquetados con el proveedor.
 - [ ] Facturación electrónica (CFDI) — ya manejamos RFC en `Company`, es
   probable que sea requisito real en México más adelante.
 - [ ] Programa de lealtad/puntos.

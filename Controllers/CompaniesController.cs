@@ -298,8 +298,15 @@ namespace SecureSistem.Controllers
                 CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
                 CreatedAt = now, CreatedBy = currentUser
             };
+            var suppliersRoute = new NavigationRoute
+            {
+                ParentId = catalog.Id, WindowName = "Proveedores", RoutePath = "/catalogo/proveedores",
+                Icon = "fas fa-truck", WindowId = "win-suppliers", Level = 1, SortOrder = 8,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
+                CreatedAt = now, CreatedBy = currentUser
+            };
             _context.NavigationRoutes.AddRange(
-                branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute);
+                branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute, suppliersRoute);
             await _context.SaveChangesAsync();
 
             // Cash register operations: a separate top-level group from "Catálogo", since
@@ -364,10 +371,43 @@ namespace SecureSistem.Controllers
             _context.NavigationRoutes.Add(reports);
             await _context.SaveChangesAsync();
 
+            // Consignment settlements: also a single page, next to "Reportes".
+            var consignment = new NavigationRoute
+            {
+                WindowName = "Consignaciones", RoutePath = "/consignaciones", Icon = "fas fa-handshake",
+                WindowId = "win-consignment", Level = 0, SortOrder = 8,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
+                CreatedAt = now, CreatedBy = currentUser
+            };
+            _context.NavigationRoutes.Add(consignment);
+            await _context.SaveChangesAsync();
+
+            // Quotes: also a single page, next to "Consignaciones".
+            var quotes = new NavigationRoute
+            {
+                WindowName = "Cotizaciones", RoutePath = "/cotizaciones", Icon = "fas fa-file-invoice",
+                WindowId = "win-quotes", Level = 0, SortOrder = 9,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
+                CreatedAt = now, CreatedBy = currentUser
+            };
+            _context.NavigationRoutes.Add(quotes);
+            await _context.SaveChangesAsync();
+
+            // Purchase orders: also a single page, next to "Cotizaciones".
+            var purchaseOrders = new NavigationRoute
+            {
+                WindowName = "Órdenes de compra", RoutePath = "/ordenes-compra", Icon = "fas fa-dolly",
+                WindowId = "win-purchaseorders", Level = 0, SortOrder = 10,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
+                CreatedAt = now, CreatedBy = currentUser
+            };
+            _context.NavigationRoutes.Add(purchaseOrders);
+            await _context.SaveChangesAsync();
+
             var allRoutes = new[]
             {
-                dashboard, administration, users, roles, routes, companies, sales, returns, reports,
-                catalog, branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute,
+                dashboard, administration, users, roles, routes, companies, sales, returns, reports, consignment, quotes, purchaseOrders,
+                catalog, branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute, suppliersRoute,
                 cash, cashRegistersRoute, cashSessionsRoute
             };
 

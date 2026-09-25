@@ -24,5 +24,15 @@ namespace SecureSistem.DTOs.Products
 
         public int? CategoryId { get; set; }
         public int? TaxRateId { get; set; }
+
+        public bool IsCombo { get; set; } = false;
+
+        public int? SupplierId { get; set; }
+
+        [RegularExpression("^(Percentage|FixedAmount)$", ErrorMessage = "El tipo de comisión debe ser 'Percentage' o 'FixedAmount'.")]
+        public string? CommissionType { get; set; }
+
+        [Range(0, double.MaxValue)]
+        public decimal? CommissionValue { get; set; }
     }
 }

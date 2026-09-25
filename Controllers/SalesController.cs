@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureSistem.Common;
 using SecureSistem.Data;
+using SecureSistem.DTOs.Common;
 using SecureSistem.DTOs.Sales;
 using SecureSistem.Models;
 using SecureSistem.Services;
@@ -19,27 +20,31 @@ namespace SecureSistem.Controllers
     public class SalesController : BaseApiController
     {
         private readonly ApplicationDbContext _context;
+        private readonly ISaleService _saleService;
         private readonly IEmailService _emailService;
         private readonly ILogger<SalesController> _logger;
 
-        public SalesController(ApplicationDbContext context, IEmailService emailService, ILogger<SalesController> logger)
+        public SalesController(
+            ApplicationDbContext context, ISaleService saleService, IEmailService emailService, ILogger<SalesController> logger)
         {
             _context = context;
+            _saleService = saleService;
             _emailService = emailService;
             _logger = logger;
         }
 
         /// <summary>
         /// Gets sales for the authenticated user's company, newest first, optionally
-        /// filtered. System administrators see every company's.
+        /// filtered and paginated. System administrators see every company's.
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(List<SaleResponse>), 200)]
+        [ProducesResponseType(typeof(PagedResponse<SaleResponse>), 200)]
         [ProducesResponseType(400)]
-        public async Task<ActionResult<List<SaleResponse>>> GetAll(
+        public async Task<ActionResult<PagedResponse<SaleResponse>>> GetAll(
             [FromQuery] int? branchId, [FromQuery] int? customerId,
             [FromQuery] int? cashSessionId, [FromQuery] string? status,
-            [FromQuery] DateTime? from, [FromQuery] DateTime? to)
+            [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+            [FromQuery] int? page, [FromQuery] int? pageSize)
         {
             if (from is not null && to is not null && from.Value.Date > to.Value.Date)
                 return BadRequest(new { message = "La fecha 'from' no puede ser posterior a 'to'." });
@@ -67,11 +72,15 @@ namespace SecureSistem.Controllers
             if (to is not null)
                 query = query.Where(s => s.CreatedAt < to.Value.Date.AddDays(1));
 
+            var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+            var totalCount = await query.CountAsync();
+
             var sales = await query
                 .OrderByDescending(s => s.CreatedAt)
+                .ApplyPage(normalizedPage, normalizedPageSize)
                 .ToListAsync();
 
-            return Ok(sales.Select(MapToResponse).ToList());
+            return Ok(sales.Select(MapToResponse).ToList().ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
 
         /// <summary>
@@ -97,8 +106,11 @@ namespace SecureSistem.Controllers
 
         /// <summary>
         /// Rings up a sale: validates stock, snapshots prices/taxes, records payments
-        /// (must sum exactly to the total), and deducts inventory. Everything happens in
-        /// one transaction — if any item lacks stock, the whole sale is rejected.
+        /// (must sum exactly to the total), and deducts inventory — all in one transaction,
+        /// via ISaleService (shared with QuotesController's convert-to-sale). With
+        /// CashSessionId, it's a till sale (must be the caller's own open session); without
+        /// it, it's a direct sale (e.g. invoiced, paid by transfer) — still requires the
+        /// same exact-payment-total, just no till to reconcile against.
         /// </summary>
         [HttpPost]
         [ProducesResponseType(typeof(SaleResponse), 201)]
@@ -108,177 +120,61 @@ namespace SecureSistem.Controllers
         {
             var userId = GetUserId();
             var currentUser = GetCurrentUsername();
+            int companyId;
 
-            var session = await _context.CashSessions
-                .FirstOrDefaultAsync(s => s.Id == request.CashSessionId);
-            if (session is null || session.ClosedAt is not null)
-                return BadRequest(new { message = "El turno de caja debe estar abierto." });
-
-            if (session.UserId != userId)
-                return StatusCode(403, new { message = "Solo puedes registrar ventas contra tu propio turno de caja abierto." });
-
-            var companyId = session.CompanyId;
-            if (!IsSystemAdmin() && companyId != GetCompanyId())
-                return StatusCode(403, new { message = "Solo puedes registrar ventas para tu propia empresa." });
-
-            var branch = await _context.Branches
-                .FirstOrDefaultAsync(b => b.Id == request.BranchId && b.CompanyId == companyId && b.IsActive);
-            if (branch is null)
-                return BadRequest(new { message = "La sucursal debe pertenecer a la misma empresa que el turno de caja." });
-
-            var warehouse = await _context.Warehouses
-                .FirstOrDefaultAsync(w => w.Id == request.WarehouseId && w.CompanyId == companyId && w.IsActive);
-            if (warehouse is null)
-                return BadRequest(new { message = "El almacén debe pertenecer a la misma empresa." });
-
-            if (request.CustomerId is not null)
+            if (request.CashSessionId is not null)
             {
-                var customerValid = await _context.Customers
-                    .AnyAsync(c => c.Id == request.CustomerId && c.CompanyId == companyId && c.IsActive);
-                if (!customerValid)
-                    return BadRequest(new { message = "El cliente debe pertenecer a la misma empresa." });
+                var session = await _context.CashSessions
+                    .FirstOrDefaultAsync(s => s.Id == request.CashSessionId);
+                if (session is null || session.ClosedAt is not null)
+                    return BadRequest(new { message = "El turno de caja debe estar abierto." });
+
+                if (session.UserId != userId)
+                    return StatusCode(403, new { message = "Solo puedes registrar ventas contra tu propio turno de caja abierto." });
+
+                companyId = session.CompanyId;
+                if (!IsSystemAdmin() && companyId != GetCompanyId())
+                    return StatusCode(403, new { message = "Solo puedes registrar ventas para tu propia empresa." });
+            }
+            else
+            {
+                companyId = GetCompanyId();
+                if (request.CompanyId is not null && request.CompanyId != companyId)
+                {
+                    if (!IsSystemAdmin())
+                        return StatusCode(403, new { message = "Solo el administrador del sistema puede registrar ventas directas en otra empresa." });
+
+                    companyId = request.CompanyId.Value;
+                }
             }
 
-            var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
-            var products = await _context.Products
-                .Include(p => p.TaxRate)
-                .Where(p => productIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
-                .ToListAsync();
-
-            if (products.Count != productIds.Count)
-                return BadRequest(new { message = "Uno o más productos no son válidos." });
-
-            var productsById = products.ToDictionary(p => p.Id);
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            var now = DateTimeHelper.Now;
-
-            var saleItems = new List<SaleItem>();
-            decimal subtotal = 0, discountTotal = 0, taxTotal = 0;
-
-            foreach (var itemRequest in request.Items)
+            var (saleId, error) = await _saleService.CreateSaleAsync(new SaleCreationRequest
             {
-                var product = productsById[itemRequest.ProductId];
-                var lineGross = itemRequest.Quantity * product.Price;
-
-                if (itemRequest.DiscountAmount > lineGross)
-                    return BadRequest(new { message = $"El descuento no puede exceder el total de la línea para el producto '{product.Name}'." });
-
-                var lineSubtotal = lineGross - itemRequest.DiscountAmount;
-                var taxRateValue = product.TaxRate?.Rate ?? 0m;
-                var lineTax = lineSubtotal * taxRateValue;
-                var lineTotal = lineSubtotal + lineTax;
-
-                subtotal += lineGross;
-                discountTotal += itemRequest.DiscountAmount;
-                taxTotal += lineTax;
-
-                saleItems.Add(new SaleItem
-                {
-                    ProductId = product.Id,
-                    Quantity = itemRequest.Quantity,
-                    UnitPrice = product.Price,
-                    DiscountAmount = itemRequest.DiscountAmount,
-                    TaxRateValue = taxRateValue,
-                    TaxAmount = lineTax,
-                    Subtotal = lineSubtotal,
-                    Total = lineTotal
-                });
-
-                // Deduct stock for this item.
-                var inventory = await _context.Inventories
-                    .FirstOrDefaultAsync(i => i.ProductId == product.Id && i.WarehouseId == request.WarehouseId);
-                var currentQuantity = inventory?.Quantity ?? 0m;
-                var resultingQuantity = currentQuantity - itemRequest.Quantity;
-
-                if (resultingQuantity < 0)
-                    return BadRequest(new
-                    {
-                        message = $"Stock insuficiente para el producto '{product.Name}'. Disponible: {currentQuantity}, solicitado: {itemRequest.Quantity}."
-                    });
-
-                if (inventory is null)
-                {
-                    inventory = new Inventory
-                    {
-                        ProductId = product.Id,
-                        WarehouseId = request.WarehouseId,
-                        CompanyId = companyId,
-                        Quantity = resultingQuantity,
-                        CreatedAt = now,
-                        CreatedBy = currentUser
-                    };
-                    _context.Inventories.Add(inventory);
-                }
-                else
-                {
-                    inventory.Quantity = resultingQuantity;
-                    inventory.ModifiedAt = now;
-                    inventory.ModifiedBy = currentUser;
-                }
-
-                _context.InventoryMovements.Add(new InventoryMovement
-                {
-                    ProductId = product.Id,
-                    WarehouseId = request.WarehouseId,
-                    CompanyId = companyId,
-                    Type = "Out",
-                    Quantity = -itemRequest.Quantity,
-                    ResultingQuantity = resultingQuantity,
-                    Notes = "Sale",
-                    CreatedAt = now,
-                    CreatedBy = currentUser
-                });
-            }
-
-            var total = subtotal - discountTotal + taxTotal;
-
-            var paymentsTotal = request.Payments.Sum(p => p.Amount);
-            if (paymentsTotal != total)
-                return BadRequest(new { message = $"Los pagos deben sumar exactamente {total}, se recibió {paymentsTotal}." });
-
-            var folioNumber = 1 + await _context.Sales
-                .Where(s => s.CompanyId == companyId)
-                .Select(s => (int?)s.FolioNumber)
-                .MaxAsync() ?? 1;
-
-            var sale = new Sale
-            {
-                FolioNumber = folioNumber,
+                CompanyId = companyId,
                 BranchId = request.BranchId,
                 WarehouseId = request.WarehouseId,
                 CustomerId = request.CustomerId,
                 CashSessionId = request.CashSessionId,
                 UserId = userId,
-                CompanyId = companyId,
-                Status = "Completed",
-                Subtotal = subtotal,
-                DiscountTotal = discountTotal,
-                TaxTotal = taxTotal,
-                Total = total,
-                CreatedAt = now,
-                CreatedBy = currentUser,
-                Items = saleItems,
-                Payments = request.Payments.Select(p => new Payment
+                CurrentUser = currentUser,
+                Items = request.Items.Select(i => new SaleLineItem
                 {
-                    Method = p.Method,
-                    Amount = p.Amount,
-                    CompanyId = companyId,
-                    CreatedAt = now,
-                    CreatedBy = currentUser
-                }).ToList()
-            };
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity,
+                    DiscountAmount = i.DiscountAmount
+                }).ToList(),
+                Payments = request.Payments
+            });
 
-            _context.Sales.Add(sale);
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            if (error is not null)
+                return BadRequest(new { message = error });
 
-            var created = await BaseQuery().FirstAsync(s => s.Id == sale.Id);
+            var created = await BaseQuery().FirstAsync(s => s.Id == saleId);
 
             _logger.LogInformation("Sale created: {Id} (folio {Folio}) total {Total} by {CreatedBy}",
-                sale.Id, sale.FolioNumber, sale.Total, currentUser);
+                created.Id, created.FolioNumber, created.Total, currentUser);
 
-            return CreatedAtAction(nameof(GetById), new { id = sale.Id }, MapToResponse(created));
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapToResponse(created));
         }
 
         /// <summary>
@@ -297,7 +193,7 @@ namespace SecureSistem.Controllers
             var currentUser = GetCurrentUsername();
 
             var query = _context.Sales
-                .Include(s => s.Items)
+                .Include(s => s.Items).ThenInclude(i => i.Product)
                 .Include(s => s.CashSession)
                 .Where(s => s.Id == id);
 
@@ -312,55 +208,50 @@ namespace SecureSistem.Controllers
             if (sale.Status != "Completed")
                 return BadRequest(new { message = $"Esta venta ya está '{sale.Status}'." });
 
-            if (sale.CashSession.ClosedAt is not null)
+            if (sale.CashSession is not null && sale.CashSession.ClosedAt is not null)
                 return BadRequest(new { message = "No se puede cancelar una venta cuyo turno de caja ya está cerrado. Usa una devolución en su lugar." });
 
             var hasReturns = await _context.Returns.AnyAsync(r => r.SaleId == sale.Id);
             if (hasReturns)
                 return BadRequest(new { message = "No se puede cancelar una venta que ya tiene devoluciones. Usa una devolución para lo que quede pendiente." });
 
+            var saleItemIds = sale.Items.Select(i => i.Id).ToList();
+            var hasSettledConsignment = await _context.ConsignmentSales
+                .AnyAsync(cs => saleItemIds.Contains(cs.SaleItemId) && cs.SettlementId != null);
+            if (hasSettledConsignment)
+                return BadRequest(new { message = "No se puede cancelar: ya se liquidó al consignador por uno o más artículos de esta venta." });
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             var now = DateTimeHelper.Now;
 
+            var consignmentSales = await _context.ConsignmentSales
+                .Where(cs => saleItemIds.Contains(cs.SaleItemId) && !cs.IsVoided)
+                .ToListAsync();
+            foreach (var consignmentSale in consignmentSales)
+                consignmentSale.IsVoided = true;
+
             foreach (var item in sale.Items)
             {
-                var inventory = await _context.Inventories
-                    .FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.WarehouseId == sale.WarehouseId);
-                var currentQuantity = inventory?.Quantity ?? 0m;
-                var resultingQuantity = currentQuantity + item.Quantity;
-
-                if (inventory is null)
+                if (item.Product.IsCombo)
                 {
-                    inventory = new Inventory
+                    var comboItems = await _context.ProductComboItems
+                        .Where(ci => ci.ComboProductId == item.ProductId && ci.IsActive)
+                        .ToListAsync();
+
+                    foreach (var comboItem in comboItems)
                     {
-                        ProductId = item.ProductId,
-                        WarehouseId = sale.WarehouseId,
-                        CompanyId = sale.CompanyId,
-                        Quantity = resultingQuantity,
-                        CreatedAt = now,
-                        CreatedBy = currentUser
-                    };
-                    _context.Inventories.Add(inventory);
+                        await InventoryStockHelper.RestoreStockAsync(
+                            _context, comboItem.ComponentProductId, sale.WarehouseId, sale.CompanyId,
+                            comboItem.Quantity * item.Quantity, "Return",
+                            $"Sale folio {sale.FolioNumber} cancelled (combo '{item.Product.Name}')", currentUser, now);
+                    }
                 }
                 else
                 {
-                    inventory.Quantity = resultingQuantity;
-                    inventory.ModifiedAt = now;
-                    inventory.ModifiedBy = currentUser;
+                    await InventoryStockHelper.RestoreStockAsync(
+                        _context, item.ProductId, sale.WarehouseId, sale.CompanyId,
+                        item.Quantity, "Return", $"Sale folio {sale.FolioNumber} cancelled", currentUser, now);
                 }
-
-                _context.InventoryMovements.Add(new InventoryMovement
-                {
-                    ProductId = item.ProductId,
-                    WarehouseId = sale.WarehouseId,
-                    CompanyId = sale.CompanyId,
-                    Type = "Return",
-                    Quantity = item.Quantity,
-                    ResultingQuantity = resultingQuantity,
-                    Notes = $"Sale folio {sale.FolioNumber} cancelled",
-                    CreatedAt = now,
-                    CreatedBy = currentUser
-                });
             }
 
             sale.Status = "Cancelled";
@@ -533,6 +424,7 @@ namespace SecureSistem.Controllers
                 CustomerId = sale.CustomerId,
                 CustomerName = sale.Customer?.Name,
                 CashSessionId = sale.CashSessionId,
+                QuoteId = sale.QuoteId,
                 UserId = sale.UserId,
                 Username = sale.User.Username,
                 Status = sale.Status,
