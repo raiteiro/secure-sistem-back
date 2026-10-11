@@ -38,13 +38,28 @@ namespace SecureSistem.Services
             var products = await _context.Products
                 .Include(p => p.TaxRate)
                 .Include(p => p.Supplier)
+                .Include(p => p.Unit)
                 .Where(p => productIds.Contains(p.Id) && p.CompanyId == request.CompanyId && p.IsActive)
                 .ToListAsync();
 
             if (products.Count != productIds.Count)
                 return (null, "Uno o más productos no son válidos.");
 
+            var supply = products.FirstOrDefault(p => p.Kind == "Supply");
+            if (supply is not null)
+                return (null, $"'{supply.Name}' es un insumo y no se puede vender.");
+
             var productsById = products.ToDictionary(p => p.Id);
+
+            // Each line's quantity must fit its product's unit (a combo's own unit, not its
+            // components' — their deductions are derived, not typed in).
+            foreach (var item in request.Items)
+            {
+                var product = productsById[item.ProductId];
+                var decimalsError = QuantityHelper.ValidateDecimals(item.Quantity, product.Unit, product.Name);
+                if (decimalsError is not null)
+                    return (null, decimalsError);
+            }
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             var now = DateTimeHelper.Now;
@@ -57,18 +72,21 @@ namespace SecureSistem.Services
             {
                 var product = productsById[itemRequest.ProductId];
                 var unitPrice = itemRequest.UnitPriceOverride ?? product.Price;
-                var lineGross = itemRequest.Quantity * unitPrice;
+                var discountAmount = MoneyHelper.Round(itemRequest.DiscountAmount);
+                // Every amount is rounded to cents per line, and header totals are sums of
+                // those rounded lines — so Total always equals what the lines show.
+                var lineGross = MoneyHelper.Round(itemRequest.Quantity * unitPrice);
 
-                if (itemRequest.DiscountAmount > lineGross)
+                if (discountAmount > lineGross)
                     return (null, $"El descuento no puede exceder el total de la línea para el producto '{product.Name}'.");
 
-                var lineSubtotal = lineGross - itemRequest.DiscountAmount;
+                var lineSubtotal = lineGross - discountAmount;
                 var taxRateValue = product.TaxRate?.Rate ?? 0m;
-                var lineTax = lineSubtotal * taxRateValue;
+                var lineTax = MoneyHelper.Round(lineSubtotal * taxRateValue);
                 var lineTotal = lineSubtotal + lineTax;
 
                 subtotal += lineGross;
-                discountTotal += itemRequest.DiscountAmount;
+                discountTotal += discountAmount;
                 taxTotal += lineTax;
 
                 var saleItem = new SaleItem
@@ -76,7 +94,7 @@ namespace SecureSistem.Services
                     ProductId = product.Id,
                     Quantity = itemRequest.Quantity,
                     UnitPrice = unitPrice,
-                    DiscountAmount = itemRequest.DiscountAmount,
+                    DiscountAmount = discountAmount,
                     TaxRateValue = taxRateValue,
                     TaxAmount = lineTax,
                     Subtotal = lineSubtotal,
@@ -88,9 +106,9 @@ namespace SecureSistem.Services
                 // — tax is a pass-through to the government, not real revenue to split.
                 if (product.SupplierId is not null && product.Supplier!.IsConsignor)
                 {
-                    var consignorAmount = product.CommissionType == "FixedAmount"
+                    var consignorAmount = MoneyHelper.Round(product.CommissionType == "FixedAmount"
                         ? (product.CommissionValue ?? 0m) * itemRequest.Quantity
-                        : lineSubtotal * (1 - (product.CommissionValue ?? 0m) / 100m);
+                        : lineSubtotal * (1 - (product.CommissionValue ?? 0m) / 100m));
                     var storeAmount = lineSubtotal - consignorAmount;
 
                     consignmentCandidates.Add((saleItem, product, consignorAmount, storeAmount));
@@ -131,6 +149,9 @@ namespace SecureSistem.Services
             }
 
             var total = subtotal - discountTotal + taxTotal;
+
+            if (request.Payments.Any(p => !MoneyHelper.IsWholeCents(p.Amount)))
+                return (null, "Los montos de pago no pueden tener más de 2 decimales.");
 
             var paymentsTotal = request.Payments.Sum(p => p.Amount);
             if (paymentsTotal != total)

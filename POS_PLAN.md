@@ -215,8 +215,10 @@ nada de eso aquí.
 - [x] Variantes de producto (talla/color) y combos/kits. Alcance acordado:
   "variantes" no necesitaba modelo nuevo — cada talla/color ya es un
   `Product` independiente (su propio SKU/stock) bajo la misma `Category`, y
-  `Product.Unit` (texto libre) + `Quantity` (`decimal(18,4)` en toda la
-  cadena) ya soportan vender por metro/kilo/litro con decimales. Lo único
+  `Product.UnitId` (catálogo global de unidades de medida, cada una con sus
+  decimales permitidos — ver `UnitsOfMeasureController` y `Common/QuantityHelper`) +
+  `Quantity` (`decimal(18,4)` en toda la cadena) ya soportan vender por
+  metro/kilo/litro con decimales. Lo único
   nuevo fue **combos/kits**:
   - `Product.IsCombo` — el combo es un `Product` más (reutiliza precio,
     impuesto, imagen, categoría), sin inventario propio.
@@ -237,6 +239,24 @@ nada de eso aquí.
     descontó exactamente eso de cada componente (no tocó inventario del
     combo, que no tiene), y cancelar la venta repuso ambos componentes
     correctamente.
+- [x] **Insumos, productos fabricados y producción en almacén.** Alcance acordado:
+  - `Product.Kind` = `"Product"` (se vende) o `"Supply"` (insumo: se compra, se
+    almacena y se consume al fabricar; nunca se vende, ni en ventas, ni en
+    cotizaciones, ni como componente de combo, ni de un proveedor consignador).
+  - Producto fabricado (`Product.IsManufactured`): producto normal con stock propio
+    más una receta fija de insumos (`ProductRecipeItem`). Se da de alta con
+    `POST /api/products/manufactured` y su receta se edita con
+    `POST /api/products/{id}/recipe`. A diferencia de un combo, la venta descuenta el
+    producto, no sus insumos.
+  - `ProductionController` (`/api/production`): fabricar descuenta los insumos y suma
+    el producto en el mismo almacén; separar hace lo contrario (siempre permitido si
+    hay stock del producto). Cada operación es una `ProductionOrder` con folio por
+    empresa y copia de la receta; los movimientos (`Production`/`Disassembly`) llevan
+    `ProductionOrderId`. `GET /api/production/availability` usa la misma regla que la
+    disponibilidad de combos (`ComponentAvailabilityHelper`).
+  - Permisos nuevos en el catálogo (`win-warehouses`): `WAREHOUSES.PRODUCE`,
+    `CREATE_MANUFACTURED`, `EDIT_RECIPE`, `DISASSEMBLE` — solo para el frontend.
+  - Fuera de alcance: costo del fabricado y merma (ver `TECH_DEBT.md`).
 - [ ] Listas de precios (mayoreo vs. menudeo, precios por cliente).
 - [ ] Apartados / ventas a crédito.
 - [x] Cotizaciones que se convierten en venta — junto con **ventas directas
@@ -327,9 +347,23 @@ Punto de partida para la siguiente sesión de trabajo, antes de escribir código
 
 ## Menú de navegación del módulo POS
 
-Todas las pantallas de este módulo (Sucursales, Almacenes, Categorías,
-Productos, Impuestos, Inventario) cuelgan de un grupo nuevo **"Catálogo"** (separado de
-"Administración"), con rutas `/catalogo/*`. Se marcan con
+Las pantallas se agrupan por área (migración `RegroupNavigationRoutes`; mismo árbol en
+`CompaniesController.Create` para empresas nuevas). Solo se agrupan: los paths
+(`/catalogo/*`, `/caja/*`, etc.) y los `WindowId` no cambiaron.
+
+```
+Dashboard
+Punto de venta   (win-pos)         Ventas, Devoluciones, Cajas, Turnos
+Comercial        (win-commercial)  Cotizaciones, Clientes
+Compras          (win-purchasing)  Órdenes de compra, Proveedores, Consignaciones
+Inventario       (win-stock)       Productos, Categorías, Almacenes, Inventario
+Reportes
+Configuración    (win-config)      Sucursales, Impuestos
+Administración   (win-admin)       Usuarios, Roles, Rutas, Empresas, Unidades de medida
+```
+
+Los grupos viejos "Catálogo" (`win-catalog`) y "Caja" (`win-cash`) quedaron
+desactivados. Todo menos Dashboard y Administración se marca con
 `NavigationRoute.IsDefaultForNewRoles = true`, lo que significa:
 
 - Se crean automáticamente al dar de alta una empresa nueva, asignadas al rol
@@ -341,16 +375,16 @@ Productos, Impuestos, Inventario) cuelgan de un grupo nuevo **"Catálogo"** (sep
 - Se hizo backfill de esto para las empresas que ya existían (Empresa Demo,
   VetPet) y todos sus roles activos.
 
-La pantalla de **Ventas** (`/ventas`, el checkout del POS en sí) es un ítem
-suelto — no cuelga de "Catálogo" — con su propio icono, también marcado
-`IsDefaultForNewRoles = true` y con el mismo backfill aplicado.
+**Al agregar una pantalla nueva**, colgarla del grupo del área que le corresponda
+(en `CompaniesController.Create` y en el backfill de su migración) en vez de dejarla
+suelta en el primer nivel.
 
 **Pendiente de coordinar con el frontend:** Empresa Demo ya tenía una ruta
 "Sucursales" creada a mano bajo "Administración" (`/admin/sucursales`, antes
 de que existiera el grupo "Catálogo"). Quedó viva sin tocar para no romper
-nada — hay que avisarle al frontend que mueva esa referencia a la nueva
-"Sucursales" del grupo "Catálogo" y, una vez migrado, desactivar/eliminar la
-vieja.
+nada — hay que avisarle al frontend que mueva esa referencia a la "Sucursales"
+del grupo "Configuración" y, una vez migrado, desactivar la vieja. (La migración
+de reagrupado no la toca: solo mueve pantallas por `WindowId` conocido.)
 
 ## Cómo se prioriza
 

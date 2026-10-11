@@ -37,6 +37,11 @@ namespace SecureSistem.Data.Configurations
                 .HasForeignKey(x => x.SupplierId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            builder.HasOne(x => x.ProductionOrder)
+                .WithMany()
+                .HasForeignKey(x => x.ProductionOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             builder.HasIndex(x => new { x.ProductId, x.WarehouseId });
         }
     }

@@ -132,7 +132,7 @@ namespace SecureSistem.Controllers
                 return BadRequest(new { message = "Hay artículos duplicados en la solicitud." });
 
             var saleItems = await _context.SaleItems
-                .Include(i => i.Product)
+                .Include(i => i.Product).ThenInclude(p => p.Unit)
                 .Where(i => saleItemIds.Contains(i.Id) && i.SaleId == sale.Id)
                 .ToListAsync();
 
@@ -141,11 +141,25 @@ namespace SecureSistem.Controllers
 
             var saleItemsById = saleItems.ToDictionary(i => i.Id);
 
+            foreach (var item in request.Items)
+            {
+                var product = saleItemsById[item.SaleItemId].Product;
+                var decimalsError = QuantityHelper.ValidateDecimals(item.Quantity, product.Unit, product.Name);
+                if (decimalsError is not null)
+                    return BadRequest(new { message = decimalsError });
+            }
+
             var alreadyReturned = await _context.ReturnItems
                 .Where(ri => saleItemIds.Contains(ri.SaleItemId))
                 .GroupBy(ri => ri.SaleItemId)
-                .Select(g => new { SaleItemId = g.Key, Quantity = g.Sum(ri => ri.Quantity) })
-                .ToDictionaryAsync(g => g.SaleItemId, g => g.Quantity);
+                .Select(g => new
+                {
+                    SaleItemId = g.Key,
+                    Quantity = g.Sum(ri => ri.Quantity),
+                    Subtotal = g.Sum(ri => ri.Subtotal),
+                    TaxAmount = g.Sum(ri => ri.TaxAmount)
+                })
+                .ToDictionaryAsync(g => g.SaleItemId);
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             var now = DateTimeHelper.Now;
@@ -156,8 +170,8 @@ namespace SecureSistem.Controllers
             foreach (var itemRequest in request.Items)
             {
                 var saleItem = saleItemsById[itemRequest.SaleItemId];
-                var alreadyReturnedQuantity = alreadyReturned.GetValueOrDefault(saleItem.Id, 0m);
-                var remaining = saleItem.Quantity - alreadyReturnedQuantity;
+                var previous = alreadyReturned.GetValueOrDefault(saleItem.Id);
+                var remaining = saleItem.Quantity - (previous?.Quantity ?? 0m);
 
                 if (itemRequest.Quantity > remaining)
                     return BadRequest(new
@@ -165,10 +179,20 @@ namespace SecureSistem.Controllers
                         message = $"No se pueden devolver {itemRequest.Quantity} de '{saleItem.Product.Name}'. Cantidad restante que se puede devolver: {remaining}."
                     });
 
-                var unitSubtotal = saleItem.Subtotal / saleItem.Quantity;
-                var unitTax = saleItem.TaxAmount / saleItem.Quantity;
-                var lineSubtotal = unitSubtotal * itemRequest.Quantity;
-                var lineTax = unitTax * itemRequest.Quantity;
+                // Returning everything that's left refunds exactly what's left of the line, so
+                // several partial returns always add up to the cent to what was charged. A
+                // partial return refunds its proportional share, rounded to cents.
+                decimal lineSubtotal, lineTax;
+                if (itemRequest.Quantity == remaining)
+                {
+                    lineSubtotal = saleItem.Subtotal - (previous?.Subtotal ?? 0m);
+                    lineTax = saleItem.TaxAmount - (previous?.TaxAmount ?? 0m);
+                }
+                else
+                {
+                    lineSubtotal = MoneyHelper.Round(saleItem.Subtotal * itemRequest.Quantity / saleItem.Quantity);
+                    lineTax = MoneyHelper.Round(saleItem.TaxAmount * itemRequest.Quantity / saleItem.Quantity);
+                }
                 var lineTotal = lineSubtotal + lineTax;
 
                 subtotalRefunded += lineSubtotal;
@@ -225,9 +249,9 @@ namespace SecureSistem.Controllers
                     else if (consignmentSale.Quantity > 0)
                     {
                         var reductionFraction = Math.Min(itemRequest.Quantity / consignmentSale.Quantity, 1m);
-                        consignmentSale.SaleAmount -= consignmentSale.SaleAmount * reductionFraction;
-                        consignmentSale.ConsignorAmount -= consignmentSale.ConsignorAmount * reductionFraction;
-                        consignmentSale.StoreAmount -= consignmentSale.StoreAmount * reductionFraction;
+                        consignmentSale.SaleAmount -= MoneyHelper.Round(consignmentSale.SaleAmount * reductionFraction);
+                        consignmentSale.ConsignorAmount -= MoneyHelper.Round(consignmentSale.ConsignorAmount * reductionFraction);
+                        consignmentSale.StoreAmount = consignmentSale.SaleAmount - consignmentSale.ConsignorAmount;
                         consignmentSale.Quantity -= itemRequest.Quantity;
                     }
                 }

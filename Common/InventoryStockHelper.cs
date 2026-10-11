@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SecureSistem.Data;
 using SecureSistem.Models;
 
@@ -7,7 +7,8 @@ namespace SecureSistem.Common
     /// <summary>
     /// Shared "adjust stock for one product in one warehouse" logic — upsert Inventory,
     /// snapshot the InventoryMovement — used by every place that deducts or restores stock
-    /// (SalesController.Create/Cancel, ReturnsController.Create), including once per
+    /// (SaleService, SalesController.Cancel, ReturnsController.Create,
+    /// PurchaseOrdersController.Receive, ProductionController), including once per
     /// component when the line being sold/cancelled/returned is a combo.
     /// </summary>
     public static class InventoryStockHelper
@@ -19,7 +20,7 @@ namespace SecureSistem.Common
         public static async Task<string?> DeductStockAsync(
             ApplicationDbContext context, int productId, string productName, int warehouseId, int companyId,
             decimal quantity, string movementType, string notes, string currentUser, DateTime now,
-            int? supplierId = null)
+            int? supplierId = null, int? productionOrderId = null)
         {
             var inventory = await context.Inventories
                 .FirstOrDefaultAsync(i => i.ProductId == productId && i.WarehouseId == warehouseId);
@@ -41,6 +42,7 @@ namespace SecureSistem.Common
                 ResultingQuantity = resultingQuantity,
                 Notes = notes,
                 SupplierId = supplierId,
+                ProductionOrderId = productionOrderId,
                 CreatedAt = now,
                 CreatedBy = currentUser
             });
@@ -55,7 +57,7 @@ namespace SecureSistem.Common
         public static async Task RestoreStockAsync(
             ApplicationDbContext context, int productId, int warehouseId, int companyId,
             decimal quantity, string movementType, string notes, string currentUser, DateTime now,
-            int? supplierId = null)
+            int? supplierId = null, int? productionOrderId = null)
         {
             var inventory = await context.Inventories
                 .FirstOrDefaultAsync(i => i.ProductId == productId && i.WarehouseId == warehouseId);
@@ -74,6 +76,7 @@ namespace SecureSistem.Common
                 ResultingQuantity = resultingQuantity,
                 Notes = notes,
                 SupplierId = supplierId,
+                ProductionOrderId = productionOrderId,
                 CreatedAt = now,
                 CreatedBy = currentUser
             });

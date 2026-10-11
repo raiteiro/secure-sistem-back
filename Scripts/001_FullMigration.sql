@@ -2380,3 +2380,768 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260926004045_SeedSystemAdmin'
+)
+BEGIN
+
+    IF NOT EXISTS (SELECT 1 FROM [Users] WHERE [IsSystemAdmin] = 1)
+    BEGIN
+        -- Business timestamps are stored as naive Mexico City time (see Common/DateTimeHelper.cs).
+        DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+        DECLARE @by nvarchar(100) = N'system';
+        DECLARE @companyId int, @branchId int, @roleId int;
+        DECLARE @administrationId int, @catalogId int, @cashId int;
+
+        INSERT INTO [Companies] ([Name], [IsActive], [CreatedAt], [CreatedBy])
+        VALUES (N'Administración del Sistema', 1, @now, @by);
+        SET @companyId = SCOPE_IDENTITY();
+
+        INSERT INTO [Branches] ([Name], [CompanyId], [IsActive], [CreatedAt], [CreatedBy])
+        VALUES (N'Sucursal Principal', @companyId, 1, @now, @by);
+        SET @branchId = SCOPE_IDENTITY();
+
+        INSERT INTO [Warehouses] ([Name], [BranchId], [CompanyId], [IsActive], [CreatedAt], [CreatedBy])
+        VALUES (N'Almacén Sucursal Principal', @branchId, @companyId, 1, @now, @by);
+
+        -- Top-level routes (same tree as CompaniesController.Create).
+        INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+        VALUES
+            (NULL, N'Dashboard',          N'/dashboard',      N'fas fa-home',          N'win-dashboard',      0, 1,  @companyId, 1, 0, @now, @by),
+            (NULL, N'Ventas',             N'/ventas',         N'fas fa-receipt',       N'win-sales',          0, 5,  @companyId, 1, 1, @now, @by),
+            (NULL, N'Devoluciones',       N'/devoluciones',   N'fas fa-rotate-left',   N'win-returns',        0, 6,  @companyId, 1, 1, @now, @by),
+            (NULL, N'Reportes',           N'/reportes',       N'fas fa-chart-line',    N'win-reports',        0, 7,  @companyId, 1, 1, @now, @by),
+            (NULL, N'Consignaciones',     N'/consignaciones', N'fas fa-handshake',     N'win-consignment',    0, 8,  @companyId, 1, 1, @now, @by),
+            (NULL, N'Cotizaciones',       N'/cotizaciones',   N'fas fa-file-invoice',  N'win-quotes',         0, 9,  @companyId, 1, 1, @now, @by),
+            (NULL, N'Órdenes de compra',  N'/ordenes-compra', N'fas fa-dolly',         N'win-purchaseorders', 0, 10, @companyId, 1, 1, @now, @by);
+
+        INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+        VALUES (NULL, N'Administración', N'#', N'fas fa-cogs', N'win-admin', 0, 2, @companyId, 1, 0, @now, @by);
+        SET @administrationId = SCOPE_IDENTITY();
+
+        INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+        VALUES (NULL, N'Catálogo', N'#', N'fas fa-boxes-stacked', N'win-catalog', 0, 3, @companyId, 1, 1, @now, @by);
+        SET @catalogId = SCOPE_IDENTITY();
+
+        INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+        VALUES (NULL, N'Caja', N'#', N'fas fa-cash-register', N'win-cash', 0, 4, @companyId, 1, 1, @now, @by);
+        SET @cashId = SCOPE_IDENTITY();
+
+        -- Child routes.
+        INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+        VALUES
+            (@administrationId, N'Usuarios',    N'/admin/users',           N'fas fa-users',          N'win-users',         1, 1, @companyId, 1, 0, @now, @by),
+            (@administrationId, N'Roles',       N'/admin/roles',           N'fas fa-user-tag',       N'win-roles',         1, 2, @companyId, 1, 0, @now, @by),
+            (@administrationId, N'Rutas',       N'/admin/routes',          N'fas fa-sitemap',        N'win-routes',        1, 3, @companyId, 1, 0, @now, @by),
+            (@administrationId, N'Empresas',    N'/admin/empresas',        N'fas fa-building',       N'win-company',       1, 4, @companyId, 1, 0, @now, @by),
+            (@catalogId,        N'Sucursales',  N'/catalogo/sucursales',   N'fas fa-store',          N'win-branches',      1, 1, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Almacenes',   N'/catalogo/almacenes',    N'fas fa-warehouse',      N'win-warehouses',    1, 2, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Categorías',  N'/catalogo/categorias',   N'fas fa-tags',           N'win-categories',    1, 3, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Productos',   N'/catalogo/productos',    N'fas fa-box',            N'win-products',      1, 4, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Impuestos',   N'/catalogo/impuestos',    N'fas fa-percent',        N'win-taxrates',      1, 5, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Inventario',  N'/catalogo/inventario',   N'fas fa-clipboard-list', N'win-inventory',     1, 6, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Clientes',    N'/catalogo/clientes',     N'fas fa-address-book',   N'win-customers',     1, 7, @companyId, 1, 1, @now, @by),
+            (@catalogId,        N'Proveedores', N'/catalogo/proveedores',  N'fas fa-truck',          N'win-suppliers',     1, 8, @companyId, 1, 1, @now, @by),
+            (@cashId,           N'Cajas',       N'/caja/cajas',            N'fas fa-cash-register',  N'win-cashregisters', 1, 1, @companyId, 1, 1, @now, @by),
+            (@cashId,           N'Turnos',      N'/caja/turnos',           N'fas fa-clock',          N'win-cashsessions',  1, 2, @companyId, 1, 1, @now, @by);
+
+        INSERT INTO [Roles] ([Name], [Description], [CompanyId], [IsActive], [CreatedAt], [CreatedBy])
+        VALUES (N'Administrador del Sistema', N'Administrador del sistema, con acceso a todas las páginas y a la gestión de empresas.', @companyId, 1, @now, @by);
+        SET @roleId = SCOPE_IDENTITY();
+
+        INSERT INTO [RoleNavigationRoutes] ([RoleId], [NavigationRouteId], [IsActive], [CreatedAt], [CreatedBy])
+        SELECT @roleId, [Id], 1, @now, @by
+        FROM [NavigationRoutes]
+        WHERE [CompanyId] = @companyId;
+
+        INSERT INTO [RolePermissions] ([RoleId], [PermissionId], [IsActive], [CreatedAt], [CreatedBy])
+        SELECT @roleId, [Id], 1, @now, @by
+        FROM [Permissions]
+        WHERE [IsActive] = 1 AND [IsDefaultForNewRoles] = 1;
+
+        -- Password: Admin123! (BCrypt). Must be changed on first login.
+        INSERT INTO [Users] ([Username], [Email], [PasswordHash], [FirstName], [LastName], [RoleId], [CompanyId], [IsActive], [IsSystemAdmin], [MustChangePassword], [CreatedAt], [CreatedBy])
+        VALUES (N'sysadmin', N'sysadmin@sistema.local', N'$2a$11$PGeqmbiBUyNR.mP1mlmg7OCYYhMSSygGLHMM/ErNCW6eu5JMVGhQ.', N'Admin', N'Sistema', @roleId, @companyId, 1, 1, 1, @now, @by);
+    END;
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260926004045_SeedSystemAdmin'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260926004045_SeedSystemAdmin', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927195015_ZeroComboInventory'
+)
+BEGIN
+
+    -- Business timestamps are stored as naive Mexico City time (see Common/DateTimeHelper.cs).
+    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+
+    INSERT INTO [InventoryMovements] ([ProductId], [WarehouseId], [CompanyId], [Type], [Quantity], [ResultingQuantity], [Notes], [CreatedAt], [CreatedBy])
+    SELECT i.[ProductId], i.[WarehouseId], i.[CompanyId], N'Adjustment', -i.[Quantity], 0,
+           N'Ajuste automático: un combo no tiene stock propio, su disponibilidad se calcula con el stock de sus componentes.',
+           @now, N'system'
+    FROM [Inventories] i
+    JOIN [Products] p ON p.[Id] = i.[ProductId]
+    WHERE p.[IsCombo] = 1 AND i.[Quantity] <> 0;
+
+    UPDATE i
+    SET i.[Quantity] = 0, i.[ModifiedAt] = @now, i.[ModifiedBy] = N'system'
+    FROM [Inventories] i
+    JOIN [Products] p ON p.[Id] = i.[ProductId]
+    WHERE p.[IsCombo] = 1 AND i.[Quantity] <> 0;
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927195015_ZeroComboInventory'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260927195015_ZeroComboInventory', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [IsManufactured] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [Kind] nvarchar(20) NOT NULL DEFAULT N'Product';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    ALTER TABLE [InventoryMovements] ADD [ProductionOrderId] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE TABLE [ProductionOrders] (
+        [Id] int NOT NULL IDENTITY,
+        [CompanyId] int NOT NULL,
+        [FolioNumber] int NOT NULL,
+        [Type] nvarchar(20) NOT NULL,
+        [ProductId] int NOT NULL,
+        [WarehouseId] int NOT NULL,
+        [Quantity] decimal(18,4) NOT NULL,
+        [Notes] nvarchar(500) NULL,
+        [UserId] int NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_ProductionOrders] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ProductionOrders_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductionOrders_Products_ProductId] FOREIGN KEY ([ProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductionOrders_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductionOrders_Warehouses_WarehouseId] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE TABLE [ProductRecipeItems] (
+        [Id] int NOT NULL IDENTITY,
+        [ProductId] int NOT NULL,
+        [SupplyProductId] int NOT NULL,
+        [Quantity] decimal(18,4) NOT NULL,
+        [CompanyId] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        CONSTRAINT [PK_ProductRecipeItems] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ProductRecipeItems_Companies_CompanyId] FOREIGN KEY ([CompanyId]) REFERENCES [Companies] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductRecipeItems_Products_ProductId] FOREIGN KEY ([ProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductRecipeItems_Products_SupplyProductId] FOREIGN KEY ([SupplyProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE TABLE [ProductionOrderItems] (
+        [Id] int NOT NULL IDENTITY,
+        [ProductionOrderId] int NOT NULL,
+        [SupplyProductId] int NOT NULL,
+        [QuantityPerUnit] decimal(18,4) NOT NULL,
+        [TotalQuantity] decimal(18,4) NOT NULL,
+        CONSTRAINT [PK_ProductionOrderItems] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ProductionOrderItems_ProductionOrders_ProductionOrderId] FOREIGN KEY ([ProductionOrderId]) REFERENCES [ProductionOrders] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_ProductionOrderItems_Products_SupplyProductId] FOREIGN KEY ([SupplyProductId]) REFERENCES [Products] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_InventoryMovements_ProductionOrderId] ON [InventoryMovements] ([ProductionOrderId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductionOrderItems_ProductionOrderId] ON [ProductionOrderItems] ([ProductionOrderId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductionOrderItems_SupplyProductId] ON [ProductionOrderItems] ([SupplyProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_ProductionOrders_CompanyId_FolioNumber] ON [ProductionOrders] ([CompanyId], [FolioNumber]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductionOrders_ProductId] ON [ProductionOrders] ([ProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductionOrders_UserId] ON [ProductionOrders] ([UserId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductionOrders_WarehouseId] ON [ProductionOrders] ([WarehouseId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductRecipeItems_CompanyId] ON [ProductRecipeItems] ([CompanyId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_ProductRecipeItems_ProductId_SupplyProductId] ON [ProductRecipeItems] ([ProductId], [SupplyProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    CREATE INDEX [IX_ProductRecipeItems_SupplyProductId] ON [ProductRecipeItems] ([SupplyProductId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    ALTER TABLE [InventoryMovements] ADD CONSTRAINT [FK_InventoryMovements_ProductionOrders_ProductionOrderId] FOREIGN KEY ([ProductionOrderId]) REFERENCES [ProductionOrders] ([Id]) ON DELETE NO ACTION;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+
+    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+
+    INSERT INTO [Permissions] ([Key], [Name], [Description], [WindowId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+    SELECT v.[Key], v.[Name], NULL, N'win-warehouses', 1, 1, @now, N'system'
+    FROM (VALUES
+        (N'WAREHOUSES.PRODUCE', N'Fabricar productos con insumos'),
+        (N'WAREHOUSES.CREATE_MANUFACTURED', N'Dar de alta un producto fabricado'),
+        (N'WAREHOUSES.EDIT_RECIPE', N'Editar receta de producto fabricado'),
+        (N'WAREHOUSES.DISASSEMBLE', N'Separar producto en sus insumos')
+    ) AS v([Key], [Name])
+    WHERE NOT EXISTS (SELECT 1 FROM [Permissions] p WHERE p.[Key] = v.[Key]);
+
+    INSERT INTO [RolePermissions] ([RoleId], [PermissionId], [IsActive], [CreatedAt], [CreatedBy])
+    SELECT r.[Id], p.[Id], 1, @now, N'system'
+    FROM [Roles] r
+    CROSS JOIN [Permissions] p
+    WHERE r.[IsActive] = 1
+      AND p.[Key] IN (N'WAREHOUSES.PRODUCE', N'WAREHOUSES.CREATE_MANUFACTURED', N'WAREHOUSES.EDIT_RECIPE', N'WAREHOUSES.DISASSEMBLE')
+      AND NOT EXISTS (SELECT 1 FROM [RolePermissions] rp WHERE rp.[RoleId] = r.[Id] AND rp.[PermissionId] = p.[Id]);
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927202629_AddSuppliesAndProduction'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260927202629_AddSuppliesAndProduction', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    CREATE TABLE [UnitsOfMeasure] (
+        [Id] int NOT NULL IDENTITY,
+        [Name] nvarchar(50) NOT NULL,
+        [Abbreviation] nvarchar(10) NOT NULL,
+        [DecimalPlaces] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [CreatedBy] nvarchar(100) NOT NULL,
+        [ModifiedAt] datetime2 NULL,
+        [ModifiedBy] nvarchar(100) NULL,
+        CONSTRAINT [PK_UnitsOfMeasure] PRIMARY KEY ([Id])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_UnitsOfMeasure_Abbreviation] ON [UnitsOfMeasure] ([Abbreviation]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_UnitsOfMeasure_Name] ON [UnitsOfMeasure] ([Name]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+
+    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+
+    INSERT INTO [UnitsOfMeasure] ([Name], [Abbreviation], [DecimalPlaces], [IsActive], [CreatedAt], [CreatedBy])
+    SELECT v.[Name], v.[Abbreviation], v.[DecimalPlaces], 1, @now, N'system'
+    FROM (VALUES
+        (N'Pieza', N'pz', 0),
+        (N'Caja', N'caja', 0),
+        (N'Paquete', N'paq', 0),
+        (N'Kilogramo', N'kg', 3),
+        (N'Gramo', N'g', 0),
+        (N'Litro', N'L', 3),
+        (N'Mililitro', N'ml', 0),
+        (N'Metro', N'm', 2),
+        (N'Centímetro', N'cm', 0)
+    ) AS v([Name], [Abbreviation], [DecimalPlaces])
+    WHERE NOT EXISTS (SELECT 1 FROM [UnitsOfMeasure] u WHERE u.[Name] = v.[Name]);
+
+    -- Audit report of the Unit → UnitId migration, for manual review. Not part of the EF
+    -- model: query it directly, and drop it once reviewed (see TECH_DEBT.md).
+    IF OBJECT_ID(N'[UnitMigrationReport]') IS NULL
+        CREATE TABLE [UnitMigrationReport] (
+            [Id] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            [ProductId] int NOT NULL,
+            [ProductName] nvarchar(200) NOT NULL,
+            [CompanyId] int NOT NULL,
+            [OriginalUnit] nvarchar(20) NULL,
+            [AssignedUnit] nvarchar(50) NOT NULL,
+            [Issue] nvarchar(30) NOT NULL,
+            [Detail] nvarchar(500) NOT NULL,
+            [CreatedAt] datetime2 NOT NULL
+        );
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    ALTER TABLE [Products] ADD [UnitId] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    EXEC(N'
+    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE ''Central Standard Time (Mexico)'');
+
+    DECLARE @map TABLE (ProductId int PRIMARY KEY, OriginalUnit nvarchar(20) NULL, UnitName nvarchar(50) NULL);
+
+    INSERT INTO @map (ProductId, OriginalUnit, UnitName)
+    SELECT p.[Id], p.[Unit],
+        CASE
+            WHEN x.n IN (N''pz'', N''pza'', N''pieza'', N''piezas'', N''unidad'', N''unidades'', N''u'') THEN N''Pieza''
+            WHEN x.n IN (N''kg'', N''kilo'', N''kilos'', N''kilogramo'', N''kilogramos'') THEN N''Kilogramo''
+            WHEN x.n IN (N''g'', N''gr'', N''gramo'', N''gramos'') THEN N''Gramo''
+            WHEN x.n IN (N''l'', N''lt'', N''litro'', N''litros'') THEN N''Litro''
+            WHEN x.n IN (N''ml'', N''mililitro'', N''mililitros'') THEN N''Mililitro''
+            WHEN x.n IN (N''m'', N''mt'', N''metro'', N''metros'') THEN N''Metro''
+            WHEN x.n IN (N''cm'', N''centimetro'', N''centimetros'') THEN N''Centímetro''
+            WHEN x.n IN (N''caja'', N''cajas'') THEN N''Caja''
+            WHEN x.n IN (N''paquete'', N''paquetes'', N''paq'') THEN N''Paquete''
+            ELSE NULL
+        END
+    FROM [Products] p
+    CROSS APPLY (SELECT REPLACE(LTRIM(RTRIM(ISNULL(p.[Unit], N''''))), N'' '', N'''') COLLATE Latin1_General_CI_AI AS n) x;
+
+    UPDATE p
+    SET p.[UnitId] = u.[Id]
+    FROM [Products] p
+    JOIN @map m ON m.ProductId = p.[Id]
+    JOIN [UnitsOfMeasure] u ON u.[Name] = ISNULL(m.UnitName, N''Pieza'');
+
+    INSERT INTO [UnitMigrationReport] ([ProductId], [ProductName], [CompanyId], [OriginalUnit], [AssignedUnit], [Issue], [Detail], [CreatedAt])
+    SELECT p.[Id], p.[Name], p.[CompanyId], m.OriginalUnit, N''Pieza'', N''UnrecognizedUnit'',
+           CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL(m.OriginalUnit, N''''))), N'''') IS NULL
+                THEN N''Sin unidad capturada: se asignó Pieza.''
+                ELSE N''Texto de unidad no reconocido: se asignó Pieza.'' END,
+           @now
+    FROM @map m
+    JOIN [Products] p ON p.[Id] = m.ProductId
+    WHERE m.UnitName IS NULL;
+
+    INSERT INTO [UnitMigrationReport] ([ProductId], [ProductName], [CompanyId], [OriginalUnit], [AssignedUnit], [Issue], [Detail], [CreatedAt])
+    SELECT p.[Id], p.[Name], p.[CompanyId], m.OriginalUnit, u.[Name], N''InventoryDecimals'',
+           N''Stock de '' + CONVERT(nvarchar(40), i.[Quantity]) + N'' en el almacén '' + CONVERT(nvarchar(20), i.[WarehouseId])
+               + N'' tiene más de '' + CONVERT(nvarchar(5), u.[DecimalPlaces]) + N'' decimales.'',
+           @now
+    FROM [Inventories] i
+    JOIN [Products] p ON p.[Id] = i.[ProductId]
+    JOIN [UnitsOfMeasure] u ON u.[Id] = p.[UnitId]
+    JOIN @map m ON m.ProductId = p.[Id]
+    WHERE i.[Quantity] <> ROUND(i.[Quantity], u.[DecimalPlaces]);
+
+    INSERT INTO [UnitMigrationReport] ([ProductId], [ProductName], [CompanyId], [OriginalUnit], [AssignedUnit], [Issue], [Detail], [CreatedAt])
+    SELECT p.[Id], p.[Name], p.[CompanyId], m.OriginalUnit, u.[Name], N''MinStockDecimals'',
+           N''Stock mínimo de '' + CONVERT(nvarchar(40), i.[MinStock]) + N'' en el almacén '' + CONVERT(nvarchar(20), i.[WarehouseId])
+               + N'' tiene más de '' + CONVERT(nvarchar(5), u.[DecimalPlaces]) + N'' decimales.'',
+           @now
+    FROM [Inventories] i
+    JOIN [Products] p ON p.[Id] = i.[ProductId]
+    JOIN [UnitsOfMeasure] u ON u.[Id] = p.[UnitId]
+    JOIN @map m ON m.ProductId = p.[Id]
+    WHERE i.[MinStock] IS NOT NULL AND i.[MinStock] <> ROUND(i.[MinStock], u.[DecimalPlaces]);
+
+    INSERT INTO [UnitMigrationReport] ([ProductId], [ProductName], [CompanyId], [OriginalUnit], [AssignedUnit], [Issue], [Detail], [CreatedAt])
+    SELECT p.[Id], p.[Name], p.[CompanyId], m.OriginalUnit, u.[Name], N''RecipeDecimals'',
+           N''Receta del producto '' + CONVERT(nvarchar(20), ri.[ProductId]) + N'' usa '' + CONVERT(nvarchar(40), ri.[Quantity])
+               + N'', con más de '' + CONVERT(nvarchar(5), u.[DecimalPlaces]) + N'' decimales.'',
+           @now
+    FROM [ProductRecipeItems] ri
+    JOIN [Products] p ON p.[Id] = ri.[SupplyProductId]
+    JOIN [UnitsOfMeasure] u ON u.[Id] = p.[UnitId]
+    JOIN @map m ON m.ProductId = p.[Id]
+    WHERE ri.[IsActive] = 1 AND ri.[Quantity] <> ROUND(ri.[Quantity], u.[DecimalPlaces]);
+
+    INSERT INTO [UnitMigrationReport] ([ProductId], [ProductName], [CompanyId], [OriginalUnit], [AssignedUnit], [Issue], [Detail], [CreatedAt])
+    SELECT p.[Id], p.[Name], p.[CompanyId], m.OriginalUnit, u.[Name], N''ComboDecimals'',
+           N''Combo '' + CONVERT(nvarchar(20), ci.[ComboProductId]) + N'' usa '' + CONVERT(nvarchar(40), ci.[Quantity])
+               + N'', con más de '' + CONVERT(nvarchar(5), u.[DecimalPlaces]) + N'' decimales.'',
+           @now
+    FROM [ProductComboItems] ci
+    JOIN [Products] p ON p.[Id] = ci.[ComponentProductId]
+    JOIN [UnitsOfMeasure] u ON u.[Id] = p.[UnitId]
+    JOIN @map m ON m.ProductId = p.[Id]
+    WHERE ci.[IsActive] = 1 AND ci.[Quantity] <> ROUND(ci.[Quantity], u.[DecimalPlaces]);
+    ');
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    DECLARE @var4 sysname;
+    SELECT @var4 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[Products]') AND [c].[name] = N'UnitId');
+    IF @var4 IS NOT NULL EXEC(N'ALTER TABLE [Products] DROP CONSTRAINT [' + @var4 + '];');
+    ALTER TABLE [Products] ALTER COLUMN [UnitId] int NOT NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    CREATE INDEX [IX_Products_UnitId] ON [Products] ([UnitId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    ALTER TABLE [Products] ADD CONSTRAINT [FK_Products_UnitsOfMeasure_UnitId] FOREIGN KEY ([UnitId]) REFERENCES [UnitsOfMeasure] ([Id]) ON DELETE NO ACTION;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    DECLARE @var5 sysname;
+    SELECT @var5 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[Products]') AND [c].[name] = N'Unit');
+    IF @var5 IS NOT NULL EXEC(N'ALTER TABLE [Products] DROP CONSTRAINT [' + @var5 + '];');
+    ALTER TABLE [Products] DROP COLUMN [Unit];
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+
+    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+
+    INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+    SELECT admin.[Id], N'Unidades de medida', N'/admin/unidades-medida', N'fas fa-ruler', N'win-units', 1, 5, admin.[CompanyId], 1, 0, @now, N'system'
+    FROM [NavigationRoutes] admin
+    WHERE admin.[WindowId] = N'win-admin' AND admin.[IsActive] = 1
+      AND NOT EXISTS (SELECT 1 FROM [NavigationRoutes] r WHERE r.[CompanyId] = admin.[CompanyId] AND r.[WindowId] = N'win-units');
+
+    INSERT INTO [RoleNavigationRoutes] ([RoleId], [NavigationRouteId], [IsActive], [CreatedAt], [CreatedBy])
+    SELECT rnr.[RoleId], units.[Id], 1, @now, N'system'
+    FROM [RoleNavigationRoutes] rnr
+    JOIN [NavigationRoutes] usersRoute ON usersRoute.[Id] = rnr.[NavigationRouteId] AND usersRoute.[WindowId] = N'win-users'
+    JOIN [Roles] r ON r.[Id] = rnr.[RoleId] AND r.[IsActive] = 1
+    JOIN [NavigationRoutes] units ON units.[CompanyId] = usersRoute.[CompanyId] AND units.[WindowId] = N'win-units'
+    WHERE rnr.[IsActive] = 1
+      AND NOT EXISTS (SELECT 1 FROM [RoleNavigationRoutes] x WHERE x.[RoleId] = rnr.[RoleId] AND x.[NavigationRouteId] = units.[Id]);
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927213942_AddUnitsOfMeasure'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260927213942_AddUnitsOfMeasure', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927221609_RegroupNavigationRoutes'
+)
+BEGIN
+
+    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+
+    DECLARE @groups TABLE (WindowId nvarchar(100) PRIMARY KEY, Name nvarchar(100), Icon nvarchar(100), SortOrder int);
+    INSERT INTO @groups VALUES
+        (N'win-pos', N'Punto de venta', N'fas fa-cash-register', 2),
+        (N'win-commercial', N'Comercial', N'fas fa-briefcase', 3),
+        (N'win-purchasing', N'Compras', N'fas fa-cart-flatbed', 4),
+        (N'win-stock', N'Inventario', N'fas fa-boxes-stacked', 5),
+        (N'win-config', N'Configuración', N'fas fa-sliders', 7);
+
+    DECLARE @pages TABLE (WindowId nvarchar(100) PRIMARY KEY, GroupWindowId nvarchar(100), SortOrder int);
+    INSERT INTO @pages VALUES
+        (N'win-sales', N'win-pos', 1),
+        (N'win-returns', N'win-pos', 2),
+        (N'win-cashregisters', N'win-pos', 3),
+        (N'win-cashsessions', N'win-pos', 4),
+        (N'win-quotes', N'win-commercial', 1),
+        (N'win-customers', N'win-commercial', 2),
+        (N'win-purchaseorders', N'win-purchasing', 1),
+        (N'win-suppliers', N'win-purchasing', 2),
+        (N'win-consignment', N'win-purchasing', 3),
+        (N'win-products', N'win-stock', 1),
+        (N'win-categories', N'win-stock', 2),
+        (N'win-warehouses', N'win-stock', 3),
+        (N'win-inventory', N'win-stock', 4),
+        (N'win-branches', N'win-config', 1),
+        (N'win-taxrates', N'win-config', 2);
+
+    -- 1. Each new group, in every company that has at least one of its pages: reactivate it if
+    --    it already exists (e.g. after a Down), otherwise create it — never a duplicate.
+    DECLARE @needed TABLE (CompanyId int, WindowId nvarchar(100));
+    INSERT INTO @needed (CompanyId, WindowId)
+    SELECT DISTINCT page.[CompanyId], p.GroupWindowId
+    FROM [NavigationRoutes] page
+    JOIN @pages p ON p.WindowId = page.[WindowId]
+    WHERE page.[IsActive] = 1;
+
+    UPDATE grp
+    SET grp.[IsActive] = 1, grp.[WindowName] = g.Name, grp.[Icon] = g.Icon, grp.[SortOrder] = g.SortOrder,
+        grp.[ParentId] = NULL, grp.[Level] = 0, grp.[ModifiedAt] = @now, grp.[ModifiedBy] = N'system'
+    FROM [NavigationRoutes] grp
+    JOIN @groups g ON g.WindowId = grp.[WindowId]
+    JOIN @needed n ON n.CompanyId = grp.[CompanyId] AND n.WindowId = grp.[WindowId]
+    WHERE grp.[IsActive] = 0
+      AND grp.[Id] = (SELECT MIN(x.[Id]) FROM [NavigationRoutes] x WHERE x.[CompanyId] = grp.[CompanyId] AND x.[WindowId] = grp.[WindowId])
+      AND NOT EXISTS (SELECT 1 FROM [NavigationRoutes] x WHERE x.[CompanyId] = grp.[CompanyId] AND x.[WindowId] = grp.[WindowId] AND x.[IsActive] = 1);
+
+    INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
+    SELECT NULL, g.Name, N'#', g.Icon, g.WindowId, 0, g.SortOrder, n.CompanyId, 1, 1, @now, N'system'
+    FROM @needed n
+    JOIN @groups g ON g.WindowId = n.WindowId
+    WHERE NOT EXISTS (SELECT 1 FROM [NavigationRoutes] x WHERE x.[CompanyId] = n.CompanyId AND x.[WindowId] = n.WindowId);
+
+    -- 2. Move the pages under their group.
+    UPDATE page
+    SET page.[ParentId] = grp.[Id], page.[Level] = 1, page.[SortOrder] = p.SortOrder,
+        page.[ModifiedAt] = @now, page.[ModifiedBy] = N'system'
+    FROM [NavigationRoutes] page
+    JOIN @pages p ON p.WindowId = page.[WindowId]
+    JOIN [NavigationRoutes] grp ON grp.[CompanyId] = page.[CompanyId] AND grp.[WindowId] = p.GroupWindowId AND grp.[IsActive] = 1
+    WHERE page.[IsActive] = 1;
+
+    -- 3. Top-level order of what stays at the root.
+    UPDATE r
+    SET r.[SortOrder] = CASE r.[WindowId] WHEN N'win-dashboard' THEN 1 WHEN N'win-reports' THEN 6 WHEN N'win-admin' THEN 8 END,
+        r.[ParentId] = NULL, r.[Level] = 0, r.[ModifiedAt] = @now, r.[ModifiedBy] = N'system'
+    FROM [NavigationRoutes] r
+    WHERE r.[WindowId] IN (N'win-dashboard', N'win-reports', N'win-admin') AND r.[IsActive] = 1;
+
+    -- 4. Deactivate the old groups once nothing active hangs from them.
+    UPDATE g
+    SET g.[IsActive] = 0, g.[ModifiedAt] = @now, g.[ModifiedBy] = N'system'
+    FROM [NavigationRoutes] g
+    WHERE g.[WindowId] IN (N'win-catalog', N'win-cash') AND g.[IsActive] = 1
+      AND NOT EXISTS (SELECT 1 FROM [NavigationRoutes] c WHERE c.[ParentId] = g.[Id] AND c.[IsActive] = 1);
+
+    -- 5. Assign each new group to every active role that already sees one of its pages, so
+    --    role/route management screens show the group checked (the menu itself already
+    --    includes a page's parent automatically).
+    INSERT INTO [RoleNavigationRoutes] ([RoleId], [NavigationRouteId], [IsActive], [CreatedAt], [CreatedBy])
+    SELECT DISTINCT rnr.[RoleId], grp.[Id], 1, @now, N'system'
+    FROM [NavigationRoutes] grp
+    JOIN @groups g ON g.WindowId = grp.[WindowId]
+    JOIN [NavigationRoutes] page ON page.[ParentId] = grp.[Id] AND page.[IsActive] = 1
+    JOIN [RoleNavigationRoutes] rnr ON rnr.[NavigationRouteId] = page.[Id] AND rnr.[IsActive] = 1
+    JOIN [Roles] r ON r.[Id] = rnr.[RoleId] AND r.[IsActive] = 1
+    WHERE grp.[IsActive] = 1
+      AND NOT EXISTS (SELECT 1 FROM [RoleNavigationRoutes] x WHERE x.[RoleId] = rnr.[RoleId] AND x.[NavigationRouteId] = grp.[Id]);
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260927221609_RegroupNavigationRoutes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260927221609_RegroupNavigationRoutes', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+

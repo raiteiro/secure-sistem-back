@@ -17,9 +17,10 @@ namespace SecureSistem.Models
         public string? Description { get; set; }
 
         /// <summary>
-        /// Unit of measure (e.g. "Pieza", "Kg", "Litro"). Free text for flexibility.
+        /// Unit of measure from the global catalog. Its DecimalPlaces limits every quantity
+        /// of this product (see QuantityHelper).
         /// </summary>
-        public string? Unit { get; set; }
+        public int UnitId { get; set; }
 
         public decimal Price { get; set; }
 
@@ -45,6 +46,20 @@ namespace SecureSistem.Models
         /// ProductComboItems components instead. See ProductComboItem.
         /// </summary>
         public bool IsCombo { get; set; } = false;
+
+        /// <summary>
+        /// "Product" (sellable) or "Supply" (insumo: bought, stored and consumed by
+        /// production, never sold). An item is always exactly one of the two.
+        /// </summary>
+        public string Kind { get; set; } = "Product";
+
+        /// <summary>
+        /// When true, this product is made in-house from supplies following its
+        /// ProductRecipeItems (see ProductionController). Unlike a combo, it carries real
+        /// stock of its own: selling it deducts the product itself, not its supplies. Only
+        /// valid when Kind == "Product"; only set via POST /api/products/manufactured.
+        /// </summary>
+        public bool IsManufactured { get; set; } = false;
 
         /// <summary>
         /// The product's primary/consignor supplier. When set and Supplier.IsConsignor is
@@ -74,5 +89,6 @@ namespace SecureSistem.Models
         public Category? Category { get; set; }
         public TaxRate? TaxRate { get; set; }
         public Supplier? Supplier { get; set; }
+        public UnitOfMeasure Unit { get; set; } = null!;
     }
 }

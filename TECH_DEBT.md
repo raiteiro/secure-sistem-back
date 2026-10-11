@@ -17,10 +17,16 @@ trabajo normal (ver `CLAUDE.md`).
   ambos `appsettings*.json`. `POST /api/auth/forgot-password` ya no revienta si
   falla el envío (queda logueado como error), pero nadie recibe el correo hasta
   que se configure un servidor SMTP real (SendGrid, SES, etc.) por entorno.
-- [ ] **Primer administrador de sistema**: hoy la única forma de poner
-  `IsSystemAdmin = 1` en un usuario es con SQL directo contra la base. Antes de un
-  despliegue real, decidir un mecanismo de bootstrap (seed controlado, flag de
-  arranque, endpoint protegido por secreto de infraestructura, etc.).
+- [x] ~~**Primer administrador de sistema** solo se podía crear con SQL directo~~ —
+  **resuelto**: la migración `SeedSystemAdmin` crea la empresa "Administración del
+  Sistema" (con sucursal, almacén, árbol de rutas y rol con todos los permisos por
+  defecto, igual que `CompaniesController.Create`) y el usuario `sysadmin` con
+  `IsSystemAdmin = 1`. Solo corre si la base no tiene ya un administrador de sistema.
+- [ ] **Contraseña inicial de `sysadmin` conocida (`Admin123!`)**: está en el repo
+  (migración `SeedSystemAdmin` y `Scripts/001_FullMigration.sql`). Se mitiga con
+  `MustChangePassword = 1` (obliga a cambiarla en el primer login), pero en un
+  despliegue real hay que entrar y cambiarla **inmediatamente** después de aplicar
+  el script, antes de exponer la API.
 - [ ] **Imágenes guardadas en disco local (`wwwroot/uploads/companies/`,
   `wwwroot/uploads/products/`)**: funciona para un solo servidor, pero no
   sobrevive a un despliegue con múltiples instancias, contenedores efímeros o
@@ -72,6 +78,26 @@ trabajo normal (ver `CLAUDE.md`).
   seguido, pero si se vuelve un problema real, la solución es snapshotear
   los componentes del combo en una tabla nueva al momento de la venta.
 
+- [ ] **El costo de los productos no se actualiza solo.** Ni al recibir una orden de
+  compra (`PurchaseOrdersController.Receive` no toca `Product.Cost` con el
+  `UnitCost` recibido) ni al fabricar (`ProductionController.Produce` no calcula el
+  costo del fabricado a partir del costo de sus insumos). `Cost` queda como lo
+  capturó el usuario, así que los reportes de margen pueden desfasarse. Decidir la
+  regla (último costo vs. costo promedio ponderado) antes de implementarlo.
+- [ ] **Producción sin merma ni rendimiento.** La receta es fija: fabricar N
+  descuenta exactamente cantidad × N de cada insumo. No se maneja merma ("de 1 kg de
+  harina salen 0.95 kg útiles") ni ajustes por lote.
+- [ ] **Folio de órdenes de producción con `MAX + 1`**: mismo riesgo de colisión bajo
+  concurrencia que el folio de ventas (ver el pendiente de `SalesController.Create`).
+
+- [ ] **Un combo sin componentes activos se puede vender y no descuenta nada.**
+  `SaleService` recorre los `ProductComboItem` activos del combo; si no tiene
+  ninguno, la venta pasa sin tocar inventario. `GET /api/inventory/combo-availability`
+  ya lo reporta con disponible 0 (para no ofrecerlo en el front), pero el backend no
+  lo impide. Si se quiere cerrar del todo, rechazar en `SaleService` la venta de un
+  combo sin componentes activos (y revisar el mismo caso en
+  `QuotesController.ConvertToSale`, que usa el mismo servicio).
+
 - [ ] **Consignación: devolución de una venta ya liquidada no se reconcilia
   sola.** Si se devuelve (total o parcialmente) un artículo consignado cuya
   `ConsignmentSale` ya fue pagada al consignador (`SettlementId` no nulo),
@@ -119,7 +145,9 @@ trabajo normal (ver `CLAUDE.md`).
   un control de seguridad real, solo de UI. Si en algún momento se necesita
   que sí lo sea, `Common/PermissionHelper.HasPermissionAsync` ya existe para
   ese propósito; solo falta conectarlo acción por acción en el controller
-  que corresponda.
+  que corresponda. Aplica también a los permisos de producción
+  (`WAREHOUSES.PRODUCE`, `CREATE_MANUFACTURED`, `EDIT_RECIPE`, `DISASSEMBLE`): existen
+  en el catálogo para el frontend, pero ningún endpoint los valida.
 - [ ] Tabla de auditoría de acciones (más allá de los campos `CreatedBy`/`ModifiedBy`
   que ya existen en cada entidad).
 - [x] ~~Paginación y filtrado en tablas transaccionales y catálogos grandes~~ —
@@ -155,3 +183,14 @@ trabajo normal (ver `CLAUDE.md`).
 - [ ] `Scripts/full_migration.sql` (124 líneas) parece un script viejo/duplicado de
   `Scripts/001_FullMigration.sql` (el que se regenera con cada migración nueva y sí
   está al día). Revisar si sigue siendo necesario o se puede eliminar.
+- [ ] **Tabla `UnitMigrationReport`**: la creó la migración `AddUnitsOfMeasure` como
+  reporte de revisión manual (productos que cayeron en "Pieza" por no reconocer su
+  unidad de texto, y cantidades existentes con más decimales de los que permite su
+  unidad nueva). No es parte del modelo de EF. En cada base donde se aplique la
+  migración, revisarla (`SELECT * FROM UnitMigrationReport`), corregir a mano lo que
+  haga falta y después borrarla (`DROP TABLE UnitMigrationReport`).
+- [ ] `Scripts/002_SeedData.sql` y `Scripts/003_SeedNavigationRoutes.sql` quedaron
+  obsoletos: los reemplaza la migración `SeedSystemAdmin`. Además están desfasados
+  del esquema actual (no marcan `IsSystemAdmin`, no asignan permisos, rutas en
+  inglés y con `WindowId` que chocan con las reales como `win-inventory`/
+  `win-reports`). No correrlos; eliminarlos.

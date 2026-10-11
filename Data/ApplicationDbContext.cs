@@ -19,7 +19,11 @@ namespace SecureSistem.Data
         public DbSet<TaxRate> TaxRates => Set<TaxRate>();
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<Product> Products => Set<Product>();
+        public DbSet<UnitOfMeasure> UnitsOfMeasure => Set<UnitOfMeasure>();
         public DbSet<ProductComboItem> ProductComboItems => Set<ProductComboItem>();
+        public DbSet<ProductRecipeItem> ProductRecipeItems => Set<ProductRecipeItem>();
+        public DbSet<ProductionOrder> ProductionOrders => Set<ProductionOrder>();
+        public DbSet<ProductionOrderItem> ProductionOrderItems => Set<ProductionOrderItem>();
         public DbSet<Supplier> Suppliers => Set<Supplier>();
         public DbSet<ConsignmentSale> ConsignmentSales => Set<ConsignmentSale>();
         public DbSet<ConsignmentSettlement> ConsignmentSettlements => Set<ConsignmentSettlement>();

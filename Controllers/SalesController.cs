@@ -407,7 +407,7 @@ namespace SecureSistem.Controllers
                 .Include(s => s.Warehouse)
                 .Include(s => s.Customer)
                 .Include(s => s.User)
-                .Include(s => s.Items).ThenInclude(i => i.Product)
+                .Include(s => s.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Unit)
                 .Include(s => s.Payments);
         }
 
@@ -439,6 +439,8 @@ namespace SecureSistem.Controllers
                     ProductName = i.Product.Name,
                     ProductSku = i.Product.Sku,
                     Quantity = i.Quantity,
+                    UnitAbbreviation = i.Product.Unit.Abbreviation,
+                    UnitDecimalPlaces = i.Product.Unit.DecimalPlaces,
                     UnitPrice = i.UnitPrice,
                     DiscountAmount = i.DiscountAmount,
                     TaxRateValue = i.TaxRateValue,

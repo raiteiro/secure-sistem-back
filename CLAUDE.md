@@ -204,9 +204,12 @@ Domain/Interfaces/IUserRepository.cs
   Categorías, Productos, Impuestos, etc.), se debe crear también su
   `NavigationRoute` correspondiente y dejarla funcionando en automático para
   todos, sin que el usuario tenga que pedirlo cada vez:
-  1. Crear el `NavigationRoute` de la pantalla (bajo el grupo que le
-     corresponda — ej. "Catálogo" para módulos de POS/inventario), marcado con
-     `IsDefaultForNewRoles = true`.
+  1. Crear el `NavigationRoute` de la pantalla bajo el grupo del área que le
+     corresponda — "Punto de venta" (`win-pos`), "Comercial" (`win-commercial`),
+     "Compras" (`win-purchasing`), "Inventario" (`win-stock`), "Configuración"
+     (`win-config`) o "Administración" (`win-admin`); ver `POS_PLAN.md` → "Menú de
+     navegación". Nunca suelta en el primer nivel salvo que sea una sola pantalla
+     sin área propia (como Reportes). Marcada con `IsDefaultForNewRoles = true`.
   2. Agregarlo al bootstrap de `CompaniesController.Create` para que las
      empresas nuevas lo tengan desde el día uno, asignado al rol admin inicial.
   3. Gracias al flag `IsDefaultForNewRoles`, cualquier rol que se cree después
@@ -214,7 +217,8 @@ Domain/Interfaces/IUserRepository.cs
      falta tocar ese controller de nuevo por cada componente nuevo.
   4. Hacer **backfill** para las empresas y roles que ya existen: crear la
      ruta ahí también y asignarla a todos sus roles activos (no solo al rol
-     admin), igual que se hizo con el grupo "Catálogo".
+     admin), colgada del mismo grupo en cada empresa (buscándolo por su
+     `WindowId`), igual que hace la migración `RegroupNavigationRoutes`.
 - Si una pantalla es sensible (solo debe verla un admin, no todos los roles),
   no se marca `IsDefaultForNewRoles = true` — se sigue el patrón viejo
   (asignación explícita solo al rol que corresponda), como ya pasa con

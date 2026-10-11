@@ -13,6 +13,11 @@ namespace SecureSistem.DTOs.Inventory
         public string? Notes { get; set; }
         public int? SupplierId { get; set; }
         public string? SupplierName { get; set; }
+
+        /// <summary>
+        /// The production order behind a "Production"/"Disassembly" movement; null otherwise.
+        /// </summary>
+        public int? ProductionOrderId { get; set; }
         public int CompanyId { get; set; }
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;

@@ -122,10 +122,26 @@ namespace SecureSistem.Controllers
                 return BadRequest(new { message = "El almacén debe pertenecer a la misma empresa." });
 
             var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
-            var validProductCount = await _context.Products
-                .CountAsync(p => productIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive);
-            if (validProductCount != productIds.Count)
+            var products = await _context.Products
+                .Include(p => p.Unit)
+                .Where(p => productIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
+                .ToListAsync();
+            if (products.Count != productIds.Count)
                 return BadRequest(new { message = "Uno o más productos no son válidos." });
+
+            // Receiving the order would add stock to the combo itself, which sales never use.
+            var combo = products.FirstOrDefault(p => p.IsCombo);
+            if (combo is not null)
+                return BadRequest(new { message = $"'{combo.Name}' es un combo y no tiene stock propio: agrega a la orden sus componentes." });
+
+            var productsById = products.ToDictionary(p => p.Id);
+            foreach (var item in request.Items)
+            {
+                var product = productsById[item.ProductId];
+                var decimalsError = QuantityHelper.ValidateDecimals(item.Quantity, product.Unit, product.Name);
+                if (decimalsError is not null)
+                    return BadRequest(new { message = decimalsError });
+            }
 
             var now = DateTimeHelper.Now;
 
@@ -134,7 +150,7 @@ namespace SecureSistem.Controllers
                 ProductId = i.ProductId,
                 Quantity = i.Quantity,
                 UnitCost = i.UnitCost,
-                Total = i.Quantity * i.UnitCost,
+                Total = MoneyHelper.Round(i.Quantity * i.UnitCost),
                 QuantityReceived = 0
             }).ToList();
 
@@ -183,7 +199,9 @@ namespace SecureSistem.Controllers
         {
             var currentUser = GetCurrentUsername();
 
-            var query = _context.PurchaseOrders.Include(po => po.Items).ThenInclude(i => i.Product).Where(po => po.Id == id);
+            var query = _context.PurchaseOrders
+                .Include(po => po.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Unit)
+                .Where(po => po.Id == id);
             if (!IsSystemAdmin())
                 query = query.Where(po => po.CompanyId == GetCompanyId());
 
@@ -205,6 +223,10 @@ namespace SecureSistem.Controllers
             {
                 if (!itemsById.TryGetValue(itemRequest.PurchaseOrderItemId, out var item))
                     return BadRequest(new { message = "Uno o más artículos no pertenecen a esta orden." });
+
+                var decimalsError = QuantityHelper.ValidateDecimals(itemRequest.Quantity, item.Product.Unit, item.Product.Name);
+                if (decimalsError is not null)
+                    return BadRequest(new { message = decimalsError });
 
                 var pending = item.Quantity - item.QuantityReceived;
                 if (itemRequest.Quantity > pending)

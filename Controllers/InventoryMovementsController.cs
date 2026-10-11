@@ -28,14 +28,14 @@ namespace SecureSistem.Controllers
 
         /// <summary>
         /// Gets movements for the authenticated user's company, newest first, optionally
-        /// filtered by product, warehouse, or date range, and paginated. System
-        /// administrators see every company's.
+        /// filtered by product, warehouse, production order, or date range, and paginated.
+        /// System administrators see every company's.
         /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(PagedResponse<InventoryMovementResponse>), 200)]
         [ProducesResponseType(400)]
         public async Task<ActionResult<PagedResponse<InventoryMovementResponse>>> GetAll(
-            [FromQuery] int? productId, [FromQuery] int? warehouseId,
+            [FromQuery] int? productId, [FromQuery] int? warehouseId, [FromQuery] int? productionOrderId,
             [FromQuery] DateTime? from, [FromQuery] DateTime? to,
             [FromQuery] int? page, [FromQuery] int? pageSize)
         {
@@ -56,6 +56,9 @@ namespace SecureSistem.Controllers
 
             if (warehouseId is not null)
                 query = query.Where(m => m.WarehouseId == warehouseId);
+
+            if (productionOrderId is not null)
+                query = query.Where(m => m.ProductionOrderId == productionOrderId);
 
             if (from is not null)
                 query = query.Where(m => m.CreatedAt >= from.Value.Date);
@@ -124,12 +127,23 @@ namespace SecureSistem.Controllers
             if ((request.Type == "Out" || request.Type == "Sale") && request.Quantity > 0)
                 return BadRequest(new { message = $"Los movimientos de tipo '{request.Type}' requieren una cantidad negativa." });
 
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == request.ProductId && p.IsActive);
+            var product = await _context.Products
+                .Include(p => p.Unit)
+                .FirstOrDefaultAsync(p => p.Id == request.ProductId && p.IsActive);
             if (product is null)
                 return BadRequest(new { message = "Producto inválido." });
 
+            var decimalsError = QuantityHelper.ValidateDecimals(request.Quantity, product.Unit, product.Name);
+            if (decimalsError is not null)
+                return BadRequest(new { message = decimalsError });
+
             if (!IsSystemAdmin() && product.CompanyId != GetCompanyId())
                 return StatusCode(403, new { message = "Solo el administrador del sistema puede registrar movimientos para otra empresa." });
+
+            // Stock recorded against a combo would never be used (sales only touch its
+            // components) and would just inflate the inventory.
+            if (product.IsCombo)
+                return BadRequest(new { message = "Un combo no tiene stock propio: su disponibilidad se calcula con el stock de sus componentes. Registra el movimiento sobre los componentes." });
 
             var warehouse = await _context.Warehouses
                 .FirstOrDefaultAsync(w => w.Id == request.WarehouseId && w.CompanyId == product.CompanyId && w.IsActive);
@@ -221,6 +235,7 @@ namespace SecureSistem.Controllers
                 Notes = movement.Notes,
                 SupplierId = movement.SupplierId,
                 SupplierName = movement.Supplier?.Name,
+                ProductionOrderId = movement.ProductionOrderId,
                 CompanyId = movement.CompanyId,
                 CreatedAt = movement.CreatedAt,
                 CreatedBy = movement.CreatedBy

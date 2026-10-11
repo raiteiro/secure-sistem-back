@@ -38,6 +38,12 @@ namespace SecureSistem.Models
         /// </summary>
         public int? SupplierId { get; set; }
 
+        /// <summary>
+        /// The ProductionOrder that generated this movement, for "Production"/"Disassembly"
+        /// movements. Null for everything else.
+        /// </summary>
+        public int? ProductionOrderId { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
 
@@ -46,5 +52,6 @@ namespace SecureSistem.Models
         public Warehouse Warehouse { get; set; } = null!;
         public Company Company { get; set; } = null!;
         public Supplier? Supplier { get; set; }
+        public ProductionOrder? ProductionOrder { get; set; }
     }
 }

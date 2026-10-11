@@ -90,7 +90,11 @@ Catálogo
 │   └── Detalle de almacén           /catalogo/almacenes/:id  WarehouseDetailComponent
 │       ├── WAREHOUSES.ADD_PRODUCT       Agregar producto (alta con entrada inicial)
 │       ├── WAREHOUSES.EDIT_MIN_STOCK    Editar stock mínimo (ícono campana por fila)
-│       └── WAREHOUSES.REGISTER_MOVEMENT Registrar movimiento (ícono flechas por fila)
+│       ├── WAREHOUSES.REGISTER_MOVEMENT Registrar movimiento (ícono flechas por fila)
+│       ├── WAREHOUSES.PRODUCE             Fabricar productos con insumos
+│       ├── WAREHOUSES.CREATE_MANUFACTURED Dar de alta un producto fabricado
+│       ├── WAREHOUSES.EDIT_RECIPE         Editar receta de producto fabricado
+│       └── WAREHOUSES.DISASSEMBLE         Separar producto en sus insumos
 │
 ├── Inventario                       /catalogo/inventario     InventoryListComponent
 │   └── (sin acciones de negocio — solo lectura: ver historial, filtro de stock bajo)
@@ -169,6 +173,10 @@ Reportes                              /reportes               ReportListComponen
 | `WAREHOUSES.ADD_PRODUCT` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Agregar producto al almacén | Botón "Agregar producto" |
 | `WAREHOUSES.EDIT_MIN_STOCK` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Editar stock mínimo | Ícono campana por fila |
 | `WAREHOUSES.REGISTER_MOVEMENT` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Registrar movimiento de inventario | Ícono flechas por fila |
+| `WAREHOUSES.PRODUCE` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Fabricar productos con insumos | `POST /api/production` |
+| `WAREHOUSES.CREATE_MANUFACTURED` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Dar de alta un producto fabricado | `POST /api/products/manufactured` |
+| `WAREHOUSES.EDIT_RECIPE` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Editar receta de producto fabricado | `POST /api/products/{id}/recipe` |
+| `WAREHOUSES.DISASSEMBLE` | Almacenes (detalle) | `/catalogo/almacenes/:id` | `WarehouseDetailComponent` | Separar producto en sus insumos | `POST /api/production/disassemble` |
 | `TAX_RATES.CREATE` | Impuestos | `/catalogo/impuestos` | `TaxRateListComponent` | Crear impuesto | Botón "Nuevo impuesto" / `group-add-btn` |
 | `TAX_RATES.EDIT` | Impuestos | `/catalogo/impuestos` | `TaxRateListComponent` | Editar impuesto | Ícono lápiz por fila |
 | `TAX_RATES.DEACTIVATE` | Impuestos | `/catalogo/impuestos` | `TaxRateListComponent` | Desactivar impuesto | Ícono basura por fila |

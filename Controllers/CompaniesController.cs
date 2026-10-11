@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -194,222 +194,76 @@ namespace SecureSistem.Controllers
             _context.Warehouses.Add(mainWarehouse);
             await _context.SaveChangesAsync();
 
-            // Standard system pages every company gets by default.
-            var dashboard = new NavigationRoute
+            // Menu tree every company starts with (same structure the RegroupNavigationRoutes
+            // migration gives existing companies). Pages are grouped by area so the menu stays
+            // short; paths and WindowIds never change, only the grouping. Everything except
+            // Dashboard and "Administración" is core to the POS, so every role (present and
+            // future) gets it by default — IsDefaultForNewRoles = true.
+            NavigationRoute Group(string name, string icon, string windowId, int sortOrder, bool isDefault) => new()
             {
-                WindowName = "Dashboard", RoutePath = "/dashboard", Icon = "fas fa-home",
-                WindowId = "win-dashboard", Level = 0, SortOrder = 1,
-                CompanyId = company.Id, IsActive = true, CreatedAt = now, CreatedBy = currentUser
+                WindowName = name, RoutePath = "#", Icon = icon, WindowId = windowId, Level = 0, SortOrder = sortOrder,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = isDefault, CreatedAt = now, CreatedBy = currentUser
             };
-            var administration = new NavigationRoute
+            NavigationRoute Page(NavigationRoute? parent, string name, string path, string icon, string windowId, int sortOrder, bool isDefault) => new()
             {
-                WindowName = "Administración", RoutePath = "#", Icon = "fas fa-cogs",
-                WindowId = "win-admin", Level = 0, SortOrder = 2,
-                CompanyId = company.Id, IsActive = true, CreatedAt = now, CreatedBy = currentUser
+                Parent = parent, WindowName = name, RoutePath = path, Icon = icon, WindowId = windowId,
+                Level = parent is null ? 0 : 1, SortOrder = sortOrder,
+                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = isDefault, CreatedAt = now, CreatedBy = currentUser
             };
-            _context.NavigationRoutes.AddRange(dashboard, administration);
-            await _context.SaveChangesAsync();
 
-            var users = new NavigationRoute
-            {
-                ParentId = administration.Id, WindowName = "Usuarios", RoutePath = "/admin/users",
-                Icon = "fas fa-users", WindowId = "win-users", Level = 1, SortOrder = 1,
-                CompanyId = company.Id, IsActive = true, CreatedAt = now, CreatedBy = currentUser
-            };
-            var roles = new NavigationRoute
-            {
-                ParentId = administration.Id, WindowName = "Roles", RoutePath = "/admin/roles",
-                Icon = "fas fa-user-tag", WindowId = "win-roles", Level = 1, SortOrder = 2,
-                CompanyId = company.Id, IsActive = true, CreatedAt = now, CreatedBy = currentUser
-            };
-            var routes = new NavigationRoute
-            {
-                ParentId = administration.Id, WindowName = "Rutas", RoutePath = "/admin/routes",
-                Icon = "fas fa-sitemap", WindowId = "win-routes", Level = 1, SortOrder = 3,
-                CompanyId = company.Id, IsActive = true, CreatedAt = now, CreatedBy = currentUser
-            };
-            var companies = new NavigationRoute
-            {
-                ParentId = administration.Id, WindowName = "Empresas", RoutePath = "/admin/empresas",
-                Icon = "fas fa-building", WindowId = "win-company", Level = 1, SortOrder = 4,
-                CompanyId = company.Id, IsActive = true, CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.AddRange(users, roles, routes, companies);
-            await _context.SaveChangesAsync();
+            var dashboard = Page(null, "Dashboard", "/dashboard", "fas fa-home", "win-dashboard", 1, false);
 
-            // POS module pages: core to this system, so every role (present and future)
-            // gets them by default — IsDefaultForNewRoles = true.
-            var catalog = new NavigationRoute
-            {
-                WindowName = "Catálogo", RoutePath = "#", Icon = "fas fa-boxes-stacked",
-                WindowId = "win-catalog", Level = 0, SortOrder = 3,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(catalog);
-            await _context.SaveChangesAsync();
+            var pointOfSale = Group("Punto de venta", "fas fa-cash-register", "win-pos", 2, true);
+            var sales = Page(pointOfSale, "Ventas", "/ventas", "fas fa-receipt", "win-sales", 1, true);
+            var returns = Page(pointOfSale, "Devoluciones", "/devoluciones", "fas fa-rotate-left", "win-returns", 2, true);
+            var cashRegistersRoute = Page(pointOfSale, "Cajas", "/caja/cajas", "fas fa-cash-register", "win-cashregisters", 3, true);
+            var cashSessionsRoute = Page(pointOfSale, "Turnos", "/caja/turnos", "fas fa-clock", "win-cashsessions", 4, true);
 
-            var branchesRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Sucursales", RoutePath = "/catalogo/sucursales",
-                Icon = "fas fa-store", WindowId = "win-branches", Level = 1, SortOrder = 1,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var warehousesRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Almacenes", RoutePath = "/catalogo/almacenes",
-                Icon = "fas fa-warehouse", WindowId = "win-warehouses", Level = 1, SortOrder = 2,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var categoriesRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Categorías", RoutePath = "/catalogo/categorias",
-                Icon = "fas fa-tags", WindowId = "win-categories", Level = 1, SortOrder = 3,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var productsRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Productos", RoutePath = "/catalogo/productos",
-                Icon = "fas fa-box", WindowId = "win-products", Level = 1, SortOrder = 4,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var taxRatesRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Impuestos", RoutePath = "/catalogo/impuestos",
-                Icon = "fas fa-percent", WindowId = "win-taxrates", Level = 1, SortOrder = 5,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var inventoryRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Inventario", RoutePath = "/catalogo/inventario",
-                Icon = "fas fa-clipboard-list", WindowId = "win-inventory", Level = 1, SortOrder = 6,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var customersRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Clientes", RoutePath = "/catalogo/clientes",
-                Icon = "fas fa-address-book", WindowId = "win-customers", Level = 1, SortOrder = 7,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var suppliersRoute = new NavigationRoute
-            {
-                ParentId = catalog.Id, WindowName = "Proveedores", RoutePath = "/catalogo/proveedores",
-                Icon = "fas fa-truck", WindowId = "win-suppliers", Level = 1, SortOrder = 8,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.AddRange(
-                branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute, suppliersRoute);
-            await _context.SaveChangesAsync();
+            var commercial = Group("Comercial", "fas fa-briefcase", "win-commercial", 3, true);
+            var quotes = Page(commercial, "Cotizaciones", "/cotizaciones", "fas fa-file-invoice", "win-quotes", 1, true);
+            var customersRoute = Page(commercial, "Clientes", "/catalogo/clientes", "fas fa-address-book", "win-customers", 2, true);
 
-            // Cash register operations: a separate top-level group from "Catálogo", since
-            // it's daily operational workflow rather than reference/catalog data.
-            var cash = new NavigationRoute
-            {
-                WindowName = "Caja", RoutePath = "#", Icon = "fas fa-cash-register",
-                WindowId = "win-cash", Level = 0, SortOrder = 4,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(cash);
-            await _context.SaveChangesAsync();
+            var purchasing = Group("Compras", "fas fa-cart-flatbed", "win-purchasing", 4, true);
+            var purchaseOrders = Page(purchasing, "Órdenes de compra", "/ordenes-compra", "fas fa-dolly", "win-purchaseorders", 1, true);
+            var suppliersRoute = Page(purchasing, "Proveedores", "/catalogo/proveedores", "fas fa-truck", "win-suppliers", 2, true);
+            var consignment = Page(purchasing, "Consignaciones", "/consignaciones", "fas fa-handshake", "win-consignment", 3, true);
 
-            var cashRegistersRoute = new NavigationRoute
-            {
-                ParentId = cash.Id, WindowName = "Cajas", RoutePath = "/caja/cajas",
-                Icon = "fas fa-cash-register", WindowId = "win-cashregisters", Level = 1, SortOrder = 1,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            var cashSessionsRoute = new NavigationRoute
-            {
-                ParentId = cash.Id, WindowName = "Turnos", RoutePath = "/caja/turnos",
-                Icon = "fas fa-clock", WindowId = "win-cashsessions", Level = 1, SortOrder = 2,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.AddRange(cashRegistersRoute, cashSessionsRoute);
-            await _context.SaveChangesAsync();
+            var stock = Group("Inventario", "fas fa-boxes-stacked", "win-stock", 5, true);
+            var productsRoute = Page(stock, "Productos", "/catalogo/productos", "fas fa-box", "win-products", 1, true);
+            var categoriesRoute = Page(stock, "Categorías", "/catalogo/categorias", "fas fa-tags", "win-categories", 2, true);
+            var warehousesRoute = Page(stock, "Almacenes", "/catalogo/almacenes", "fas fa-warehouse", "win-warehouses", 3, true);
+            var inventoryRoute = Page(stock, "Inventario", "/catalogo/inventario", "fas fa-clipboard-list", "win-inventory", 4, true);
 
-            // The POS checkout screen itself: a single page, not a group.
-            var sales = new NavigationRoute
-            {
-                WindowName = "Ventas", RoutePath = "/ventas", Icon = "fas fa-receipt",
-                WindowId = "win-sales", Level = 0, SortOrder = 5,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(sales);
-            await _context.SaveChangesAsync();
+            var reports = Page(null, "Reportes", "/reportes", "fas fa-chart-line", "win-reports", 6, true);
 
-            // Returns/cancellations screen: also a single page, next to "Ventas".
-            var returns = new NavigationRoute
-            {
-                WindowName = "Devoluciones", RoutePath = "/devoluciones", Icon = "fas fa-rotate-left",
-                WindowId = "win-returns", Level = 0, SortOrder = 6,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(returns);
-            await _context.SaveChangesAsync();
+            var configuration = Group("Configuración", "fas fa-sliders", "win-config", 7, true);
+            var branchesRoute = Page(configuration, "Sucursales", "/catalogo/sucursales", "fas fa-store", "win-branches", 1, true);
+            var taxRatesRoute = Page(configuration, "Impuestos", "/catalogo/impuestos", "fas fa-percent", "win-taxrates", 2, true);
 
-            // Reporting screen: also a single page, next to "Devoluciones".
-            var reports = new NavigationRoute
-            {
-                WindowName = "Reportes", RoutePath = "/reportes", Icon = "fas fa-chart-line",
-                WindowId = "win-reports", Level = 0, SortOrder = 7,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(reports);
-            await _context.SaveChangesAsync();
-
-            // Consignment settlements: also a single page, next to "Reportes".
-            var consignment = new NavigationRoute
-            {
-                WindowName = "Consignaciones", RoutePath = "/consignaciones", Icon = "fas fa-handshake",
-                WindowId = "win-consignment", Level = 0, SortOrder = 8,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(consignment);
-            await _context.SaveChangesAsync();
-
-            // Quotes: also a single page, next to "Consignaciones".
-            var quotes = new NavigationRoute
-            {
-                WindowName = "Cotizaciones", RoutePath = "/cotizaciones", Icon = "fas fa-file-invoice",
-                WindowId = "win-quotes", Level = 0, SortOrder = 9,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(quotes);
-            await _context.SaveChangesAsync();
-
-            // Purchase orders: also a single page, next to "Cotizaciones".
-            var purchaseOrders = new NavigationRoute
-            {
-                WindowName = "Órdenes de compra", RoutePath = "/ordenes-compra", Icon = "fas fa-dolly",
-                WindowId = "win-purchaseorders", Level = 0, SortOrder = 10,
-                CompanyId = company.Id, IsActive = true, IsDefaultForNewRoles = true,
-                CreatedAt = now, CreatedBy = currentUser
-            };
-            _context.NavigationRoutes.Add(purchaseOrders);
-            await _context.SaveChangesAsync();
+            // Admin-only pages: not a default for new roles, assigned explicitly.
+            var administration = Group("Administración", "fas fa-cogs", "win-admin", 8, false);
+            var users = Page(administration, "Usuarios", "/admin/users", "fas fa-users", "win-users", 1, false);
+            var roles = Page(administration, "Roles", "/admin/roles", "fas fa-user-tag", "win-roles", 2, false);
+            var routes = Page(administration, "Rutas", "/admin/routes", "fas fa-sitemap", "win-routes", 3, false);
+            var companies = Page(administration, "Empresas", "/admin/empresas", "fas fa-building", "win-company", 4, false);
+            // Global catalog screen: read-only for company users, only system administrators
+            // can change it (enforced by UnitsOfMeasureController).
+            var unitsOfMeasure = Page(administration, "Unidades de medida", "/admin/unidades-medida", "fas fa-ruler", "win-units", 5, false);
 
             var allRoutes = new[]
             {
-                dashboard, administration, users, roles, routes, companies, sales, returns, reports, consignment, quotes, purchaseOrders,
-                catalog, branchesRoute, warehousesRoute, categoriesRoute, productsRoute, taxRatesRoute, inventoryRoute, customersRoute, suppliersRoute,
-                cash, cashRegistersRoute, cashSessionsRoute
+                dashboard,
+                pointOfSale, sales, returns, cashRegistersRoute, cashSessionsRoute,
+                commercial, quotes, customersRoute,
+                purchasing, purchaseOrders, suppliersRoute, consignment,
+                stock, productsRoute, categoriesRoute, warehousesRoute, inventoryRoute,
+                reports,
+                configuration, branchesRoute, taxRatesRoute,
+                administration, users, roles, routes, companies, unitsOfMeasure
             };
+
+            _context.NavigationRoutes.AddRange(allRoutes);
+            await _context.SaveChangesAsync();
 
             var adminRole = new Role
             {

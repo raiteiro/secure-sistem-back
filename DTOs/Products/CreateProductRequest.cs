@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace SecureSistem.DTOs.Products
 {
@@ -13,8 +13,11 @@ namespace SecureSistem.DTOs.Products
         [MaxLength(500)]
         public string? Description { get; set; }
 
-        [MaxLength(20)]
-        public string? Unit { get; set; }
+        /// <summary>
+        /// Unit of measure from the global catalog (GET /api/unitsofmeasure). Must be active.
+        /// </summary>
+        [Required(ErrorMessage = "La unidad de medida es obligatoria."), Range(1, int.MaxValue, ErrorMessage = "La unidad de medida es obligatoria.")]
+        public int UnitId { get; set; }
 
         [Required, Range(0, double.MaxValue)]
         public decimal Price { get; set; }
@@ -30,6 +33,14 @@ namespace SecureSistem.DTOs.Products
         /// define what it's made of once created.
         /// </summary>
         public bool IsCombo { get; set; } = false;
+
+        /// <summary>
+        /// "Product" (sellable, the default) or "Supply" (insumo: bought and consumed by
+        /// production, never sold). Manufactured products are created via
+        /// POST /api/products/manufactured instead.
+        /// </summary>
+        [RegularExpression("^(Product|Supply)$", ErrorMessage = "El tipo debe ser 'Product' o 'Supply'.")]
+        public string Kind { get; set; } = "Product";
 
         /// <summary>
         /// Primary/consignor supplier. Required (along with CommissionType/CommissionValue)

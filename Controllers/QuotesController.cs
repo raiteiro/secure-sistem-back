@@ -141,13 +141,27 @@ namespace SecureSistem.Controllers
             var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
             var products = await _context.Products
                 .Include(p => p.TaxRate)
+                .Include(p => p.Unit)
                 .Where(p => productIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
                 .ToListAsync();
 
             if (products.Count != productIds.Count)
                 return BadRequest(new { message = "Uno o más productos no son válidos." });
 
+            var supply = products.FirstOrDefault(p => p.Kind == "Supply");
+            if (supply is not null)
+                return BadRequest(new { message = $"'{supply.Name}' es un insumo y no se puede vender." });
+
             var productsById = products.ToDictionary(p => p.Id);
+
+            foreach (var item in request.Items)
+            {
+                var product = productsById[item.ProductId];
+                var decimalsError = QuantityHelper.ValidateDecimals(item.Quantity, product.Unit, product.Name);
+                if (decimalsError is not null)
+                    return BadRequest(new { message = decimalsError });
+            }
+
             var now = DateTimeHelper.Now;
 
             var quoteItems = new List<QuoteItem>();
@@ -156,18 +170,21 @@ namespace SecureSistem.Controllers
             foreach (var itemRequest in request.Items)
             {
                 var product = productsById[itemRequest.ProductId];
-                var lineGross = itemRequest.Quantity * product.Price;
+                // Same per-line rounding as SaleService, so a quote converted to a sale lands
+                // on the same totals it showed the customer.
+                var discountAmount = MoneyHelper.Round(itemRequest.DiscountAmount);
+                var lineGross = MoneyHelper.Round(itemRequest.Quantity * product.Price);
 
-                if (itemRequest.DiscountAmount > lineGross)
+                if (discountAmount > lineGross)
                     return BadRequest(new { message = $"El descuento no puede exceder el total de la línea para el producto '{product.Name}'." });
 
-                var lineSubtotal = lineGross - itemRequest.DiscountAmount;
+                var lineSubtotal = lineGross - discountAmount;
                 var taxRateValue = product.TaxRate?.Rate ?? 0m;
-                var lineTax = lineSubtotal * taxRateValue;
+                var lineTax = MoneyHelper.Round(lineSubtotal * taxRateValue);
                 var lineTotal = lineSubtotal + lineTax;
 
                 subtotal += lineGross;
-                discountTotal += itemRequest.DiscountAmount;
+                discountTotal += discountAmount;
                 taxTotal += lineTax;
 
                 quoteItems.Add(new QuoteItem
@@ -175,7 +192,7 @@ namespace SecureSistem.Controllers
                     ProductId = product.Id,
                     Quantity = itemRequest.Quantity,
                     UnitPrice = product.Price,
-                    DiscountAmount = itemRequest.DiscountAmount,
+                    DiscountAmount = discountAmount,
                     TaxRateValue = taxRateValue,
                     TaxAmount = lineTax,
                     Subtotal = lineSubtotal,

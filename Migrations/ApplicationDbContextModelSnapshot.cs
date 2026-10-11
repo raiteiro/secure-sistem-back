@@ -556,6 +556,9 @@ namespace SecureSistem.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ProductionOrderId")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Quantity")
                         .HasColumnType("decimal(18,4)");
 
@@ -576,6 +579,8 @@ namespace SecureSistem.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
+
+                    b.HasIndex("ProductionOrderId");
 
                     b.HasIndex("SupplierId");
 
@@ -824,6 +829,18 @@ namespace SecureSistem.Migrations
                     b.Property<bool>("IsCombo")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsManufactured")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Product");
+
                     b.Property<DateTime?>("ModifiedAt")
                         .HasColumnType("datetime2");
 
@@ -849,9 +866,8 @@ namespace SecureSistem.Migrations
                     b.Property<int?>("TaxRateId")
                         .HasColumnType("int");
 
-                    b.Property<string>("Unit")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                    b.Property<int>("UnitId")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -860,6 +876,8 @@ namespace SecureSistem.Migrations
                     b.HasIndex("SupplierId");
 
                     b.HasIndex("TaxRateId");
+
+                    b.HasIndex("UnitId");
 
                     b.HasIndex("CompanyId", "Sku")
                         .IsUnique()
@@ -909,6 +927,135 @@ namespace SecureSistem.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductComboItems", (string)null);
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductRecipeItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("SupplyProductId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("SupplyProductId");
+
+                    b.HasIndex("ProductId", "SupplyProductId")
+                        .IsUnique();
+
+                    b.ToTable("ProductRecipeItems", (string)null);
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductionOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("FolioNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("CompanyId", "FolioNumber")
+                        .IsUnique();
+
+                    b.ToTable("ProductionOrders", (string)null);
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductionOrderItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ProductionOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("QuantityPerUnit")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("SupplyProductId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TotalQuantity")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductionOrderId");
+
+                    b.HasIndex("SupplyProductId");
+
+                    b.ToTable("ProductionOrderItems", (string)null);
                 });
 
             modelBuilder.Entity("SecureSistem.Models.PurchaseOrder", b =>
@@ -1638,6 +1785,56 @@ namespace SecureSistem.Migrations
                     b.ToTable("TaxRates", (string)null);
                 });
 
+            modelBuilder.Entity("SecureSistem.Models.UnitOfMeasure", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Abbreviation")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("DecimalPlaces")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Abbreviation")
+                        .IsUnique();
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("UnitsOfMeasure", (string)null);
+                });
+
             modelBuilder.Entity("SecureSistem.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1991,6 +2188,11 @@ namespace SecureSistem.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SecureSistem.Models.ProductionOrder", "ProductionOrder")
+                        .WithMany()
+                        .HasForeignKey("ProductionOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SecureSistem.Models.Supplier", "Supplier")
                         .WithMany()
                         .HasForeignKey("SupplierId")
@@ -2005,6 +2207,8 @@ namespace SecureSistem.Migrations
                     b.Navigation("Company");
 
                     b.Navigation("Product");
+
+                    b.Navigation("ProductionOrder");
 
                     b.Navigation("Supplier");
 
@@ -2082,6 +2286,12 @@ namespace SecureSistem.Migrations
                         .HasForeignKey("TaxRateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SecureSistem.Models.UnitOfMeasure", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Category");
 
                     b.Navigation("Company");
@@ -2089,6 +2299,8 @@ namespace SecureSistem.Migrations
                     b.Navigation("Supplier");
 
                     b.Navigation("TaxRate");
+
+                    b.Navigation("Unit");
                 });
 
             modelBuilder.Entity("SecureSistem.Models.ProductComboItem", b =>
@@ -2116,6 +2328,87 @@ namespace SecureSistem.Migrations
                     b.Navigation("Company");
 
                     b.Navigation("ComponentProduct");
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductRecipeItem", b =>
+                {
+                    b.HasOne("SecureSistem.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SecureSistem.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SecureSistem.Models.Product", "SupplyProduct")
+                        .WithMany()
+                        .HasForeignKey("SupplyProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("SupplyProduct");
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductionOrder", b =>
+                {
+                    b.HasOne("SecureSistem.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SecureSistem.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SecureSistem.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SecureSistem.Models.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductionOrderItem", b =>
+                {
+                    b.HasOne("SecureSistem.Models.ProductionOrder", "ProductionOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("ProductionOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SecureSistem.Models.Product", "SupplyProduct")
+                        .WithMany()
+                        .HasForeignKey("SupplyProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProductionOrder");
+
+                    b.Navigation("SupplyProduct");
                 });
 
             modelBuilder.Entity("SecureSistem.Models.PurchaseOrder", b =>
@@ -2530,6 +2823,11 @@ namespace SecureSistem.Migrations
             modelBuilder.Entity("SecureSistem.Models.Permission", b =>
                 {
                     b.Navigation("RolePermissions");
+                });
+
+            modelBuilder.Entity("SecureSistem.Models.ProductionOrder", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("SecureSistem.Models.PurchaseOrder", b =>

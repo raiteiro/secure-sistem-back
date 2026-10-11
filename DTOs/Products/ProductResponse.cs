@@ -6,7 +6,10 @@ namespace SecureSistem.DTOs.Products
         public string? Sku { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
-        public string? Unit { get; set; }
+        public int UnitId { get; set; }
+        public string UnitName { get; set; } = string.Empty;
+        public string UnitAbbreviation { get; set; } = string.Empty;
+        public int UnitDecimalPlaces { get; set; }
         public decimal Price { get; set; }
         public decimal? Cost { get; set; }
         public string? ImagePath { get; set; }
@@ -18,6 +21,8 @@ namespace SecureSistem.DTOs.Products
         public int CompanyId { get; set; }
         public bool IsActive { get; set; }
         public bool IsCombo { get; set; }
+        public string Kind { get; set; } = string.Empty;
+        public bool IsManufactured { get; set; }
         public int? SupplierId { get; set; }
         public string? SupplierName { get; set; }
         public bool SupplierIsConsignor { get; set; }
