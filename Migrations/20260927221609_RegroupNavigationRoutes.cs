@@ -19,7 +19,7 @@ namespace SecureSistem.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(@"
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 DECLARE @groups TABLE (WindowId nvarchar(100) PRIMARY KEY, Name nvarchar(100), Icon nvarchar(100), SortOrder int);
 INSERT INTO @groups VALUES
@@ -116,7 +116,7 @@ WHERE grp.[IsActive] = 1
             // Restores the previous layout: "Catálogo" and "Caja" groups back, the rest of the
             // POS pages as top-level items, and the new groups deactivated.
             migrationBuilder.Sql(@"
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 UPDATE [NavigationRoutes]
 SET [IsActive] = 1, [ModifiedAt] = @now, [ModifiedBy] = N'system',

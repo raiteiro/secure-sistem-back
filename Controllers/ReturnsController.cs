@@ -62,10 +62,10 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var returns = await query
+            var returns = query
                 .OrderByDescending(r => r.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
 
             return Ok(returns.Select(MapToResponse).ToList().ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
@@ -133,7 +133,7 @@ namespace SecureSistem.Controllers
 
             var saleItems = await _context.SaleItems
                 .Include(i => i.Product).ThenInclude(p => p.Unit)
-                .Where(i => saleItemIds.Contains(i.Id) && i.SaleId == sale.Id)
+                .Where(i => EF.Constant(saleItemIds).Contains(i.Id) && i.SaleId == sale.Id)
                 .ToListAsync();
 
             if (saleItems.Count != saleItemIds.Count)
@@ -150,7 +150,7 @@ namespace SecureSistem.Controllers
             }
 
             var alreadyReturned = await _context.ReturnItems
-                .Where(ri => saleItemIds.Contains(ri.SaleItemId))
+                .Where(ri => EF.Constant(saleItemIds).Contains(ri.SaleItemId))
                 .GroupBy(ri => ri.SaleItemId)
                 .Select(g => new
                 {

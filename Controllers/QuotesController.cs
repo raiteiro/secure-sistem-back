@@ -64,14 +64,14 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var quotes = await query
+            var quotes = query
                 .OrderByDescending(q => q.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
 
             var quoteIds = quotes.Select(q => q.Id).ToList();
             var convertedSaleIds = await _context.Sales
-                .Where(s => s.QuoteId != null && quoteIds.Contains(s.QuoteId.Value))
+                .Where(s => s.QuoteId != null && EF.Constant(quoteIds).Contains(s.QuoteId.Value))
                 .Select(s => new { QuoteId = s.QuoteId!.Value, s.Id })
                 .ToDictionaryAsync(s => s.QuoteId, s => s.Id);
 
@@ -142,7 +142,7 @@ namespace SecureSistem.Controllers
             var products = await _context.Products
                 .Include(p => p.TaxRate)
                 .Include(p => p.Unit)
-                .Where(p => productIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
+                .Where(p => EF.Constant(productIds).Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
                 .ToListAsync();
 
             if (products.Count != productIds.Count)

@@ -247,26 +247,29 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var sessions = await query
+            var sessions = query
                 .OrderByDescending(s => s.ClosedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
             var sessionIds = sessions.Select(s => s.Id).ToList();
 
+            // EF.Constant forces a literal IN (...) list instead of EF Core 8's default
+            // OPENJSON-based parameterization for list.Contains() — OPENJSON is SQL Server
+            // 2016+ syntax and this app's production SQL Server is 2008. See TECH_DEBT.md.
             var paymentTotals = await _context.Payments
-                .Where(p => p.Sale.CashSessionId != null && sessionIds.Contains(p.Sale.CashSessionId.Value) && p.Sale.Status != "Cancelled")
+                .Where(p => p.Sale.CashSessionId != null && EF.Constant(sessionIds).Contains(p.Sale.CashSessionId.Value) && p.Sale.Status != "Cancelled")
                 .GroupBy(p => new { p.Sale.CashSessionId, p.Method })
                 .Select(g => new { g.Key.CashSessionId, g.Key.Method, Total = g.Sum(p => p.Amount) })
                 .ToListAsync();
 
             var salesCounts = await _context.Sales
-                .Where(s => s.CashSessionId != null && sessionIds.Contains(s.CashSessionId.Value) && s.Status != "Cancelled")
+                .Where(s => s.CashSessionId != null && EF.Constant(sessionIds).Contains(s.CashSessionId.Value) && s.Status != "Cancelled")
                 .GroupBy(s => s.CashSessionId)
                 .Select(g => new { CashSessionId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(g => g.CashSessionId!.Value, g => g.Count);
 
             var refundTotals = await _context.Returns
-                .Where(r => sessionIds.Contains(r.CashSessionId))
+                .Where(r => EF.Constant(sessionIds).Contains(r.CashSessionId))
                 .GroupBy(r => r.CashSessionId)
                 .Select(g => new { CashSessionId = g.Key, Total = g.Sum(r => r.TotalRefunded) })
                 .ToDictionaryAsync(g => g.CashSessionId, g => g.Total);

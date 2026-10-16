@@ -46,7 +46,7 @@ namespace SecureSistem.Controllers
 
             // Get all route assignments for these roles in one query
             var routeAssignments = await _context.RoleNavigationRoutes
-                .Where(rr => roleIds.Contains(rr.RoleId) && rr.IsActive)
+                .Where(rr => EF.Constant(roleIds).Contains(rr.RoleId) && rr.IsActive)
                 .GroupBy(rr => rr.RoleId)
                 .ToDictionaryAsync(g => g.Key, g => g.Select(rr => rr.NavigationRouteId).ToList());
 
@@ -317,7 +317,7 @@ namespace SecureSistem.Controllers
 
             // Validate all route IDs belong to the same company as the role
             var validRouteIds = await _context.NavigationRoutes
-                .Where(r => request.RouteIds.Contains(r.Id) && r.CompanyId == role.CompanyId)
+                .Where(r => EF.Constant(request.RouteIds).Contains(r.Id) && r.CompanyId == role.CompanyId)
                 .Select(r => r.Id)
                 .ToListAsync();
 
@@ -412,7 +412,7 @@ namespace SecureSistem.Controllers
 
             // The permission catalog is global (not per-company), unlike routes.
             var validPermissionIds = await _context.Permissions
-                .Where(p => request.PermissionIds.Contains(p.Id) && p.IsActive)
+                .Where(p => EF.Constant(request.PermissionIds).Contains(p.Id) && p.IsActive)
                 .Select(p => p.Id)
                 .ToListAsync();
 

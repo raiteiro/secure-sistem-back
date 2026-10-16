@@ -66,11 +66,11 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var products = await query
+            var products = query
                 .OrderBy(p => p.Name)
                 .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(p => MapToResponse(p))
-                .ToListAsync();
+                .ToList();
 
             return Ok(products.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
@@ -453,7 +453,7 @@ namespace SecureSistem.Controllers
 
             var components = await _context.Products
                 .Include(p => p.Unit)
-                .Where(p => componentIds.Contains(p.Id) && p.CompanyId == product.CompanyId && p.IsActive)
+                .Where(p => EF.Constant(componentIds).Contains(p.Id) && p.CompanyId == product.CompanyId && p.IsActive)
                 .ToListAsync();
 
             if (components.Count != componentIds.Count)
@@ -748,7 +748,7 @@ namespace SecureSistem.Controllers
 
             var supplies = await _context.Products
                 .Include(p => p.Unit)
-                .Where(p => supplyIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive && p.Kind == "Supply")
+                .Where(p => EF.Constant(supplyIds).Contains(p.Id) && p.CompanyId == companyId && p.IsActive && p.Kind == "Supply")
                 .ToListAsync();
 
             if (supplies.Count != supplyIds.Count)

@@ -208,7 +208,7 @@ namespace SecureSistem.Migrations
             // granted to every active role, so nothing is hidden until a company revokes them.
             // Frontend-only gating: no endpoint checks them server-side (see TECH_DEBT.md).
             migrationBuilder.Sql(@"
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 INSERT INTO [Permissions] ([Key], [Name], [Description], [WindowId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
 SELECT v.[Key], v.[Name], NULL, N'win-warehouses', 1, 1, @now, N'system'

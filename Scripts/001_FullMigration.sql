@@ -1,4 +1,11 @@
-﻿IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+﻿-- Guardrail: force the correct database regardless of what's selected in the
+-- SSMS toolbar/sqlcmd session, so this script can never land in [master] or
+-- any other database by accident. Change the name below if the target
+-- database is ever renamed.
+USE [secsistem];
+GO
+
+IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
 BEGIN
     CREATE TABLE [__EFMigrationsHistory] (
         [MigrationId] nvarchar(150) NOT NULL,
@@ -2392,7 +2399,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM [Users] WHERE [IsSystemAdmin] = 1)
     BEGIN
         -- Business timestamps are stored as naive Mexico City time (see Common/DateTimeHelper.cs).
-        DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+        DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
         DECLARE @by nvarchar(100) = N'system';
         DECLARE @companyId int, @branchId int, @roleId int;
         DECLARE @administrationId int, @catalogId int, @cashId int;
@@ -2494,7 +2501,7 @@ IF NOT EXISTS (
 BEGIN
 
     -- Business timestamps are stored as naive Mexico City time (see Common/DateTimeHelper.cs).
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
     INSERT INTO [InventoryMovements] ([ProductId], [WarehouseId], [CompanyId], [Type], [Quantity], [ResultingQuantity], [Notes], [CreatedAt], [CreatedBy])
     SELECT i.[ProductId], i.[WarehouseId], i.[CompanyId], N'Adjustment', -i.[Quantity], 0,
@@ -2727,7 +2734,7 @@ IF NOT EXISTS (
 )
 BEGIN
 
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
     INSERT INTO [Permissions] ([Key], [Name], [Description], [WindowId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
     SELECT v.[Key], v.[Name], NULL, N'win-warehouses', 1, 1, @now, N'system'
@@ -2810,7 +2817,7 @@ IF NOT EXISTS (
 )
 BEGIN
 
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
     INSERT INTO [UnitsOfMeasure] ([Name], [Abbreviation], [DecimalPlaces], [IsActive], [CreatedAt], [CreatedBy])
     SELECT v.[Name], v.[Abbreviation], v.[DecimalPlaces], 1, @now, N'system'
@@ -2860,7 +2867,7 @@ IF NOT EXISTS (
 )
 BEGIN
     EXEC(N'
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE ''Central Standard Time (Mexico)'');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
     DECLARE @map TABLE (ProductId int PRIMARY KEY, OriginalUnit nvarchar(20) NULL, UnitName nvarchar(50) NULL);
 
@@ -2998,7 +3005,7 @@ IF NOT EXISTS (
 )
 BEGIN
 
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
     INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
     SELECT admin.[Id], N'Unidades de medida', N'/admin/unidades-medida', N'fas fa-ruler', N'win-units', 1, 5, admin.[CompanyId], 1, 0, @now, N'system'
@@ -3040,7 +3047,7 @@ IF NOT EXISTS (
 )
 BEGIN
 
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
     DECLARE @groups TABLE (WindowId nvarchar(100) PRIMARY KEY, Name nvarchar(100), Icon nvarchar(100), SortOrder int);
     INSERT INTO @groups VALUES

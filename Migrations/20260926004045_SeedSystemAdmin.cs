@@ -26,7 +26,7 @@ namespace SecureSistem.Migrations
 IF NOT EXISTS (SELECT 1 FROM [Users] WHERE [IsSystemAdmin] = 1)
 BEGIN
     -- Business timestamps are stored as naive Mexico City time (see Common/DateTimeHelper.cs).
-    DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+    DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
     DECLARE @by nvarchar(100) = N'system';
     DECLARE @companyId int, @branchId int, @roleId int;
     DECLARE @administrationId int, @catalogId int, @cashId int;

@@ -42,12 +42,12 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var users = await query
+            var users = query
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(u => MapToResponse(u))
-                .ToListAsync();
+                .ToList();
 
             return Ok(users.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }

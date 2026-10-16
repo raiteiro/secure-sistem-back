@@ -97,6 +97,31 @@ app.UseStaticFiles();
 
 app.UseCors("AllowFrontend");
 
+// Global exception handler: without this, an unhandled exception propagates past CORS
+// middleware's response pipeline, so the browser's preflight/error check sees a response
+// with no Access-Control-Allow-Origin header and reports it as a CORS failure even when
+// the real problem is a server error. Logs the full exception server-side; the client
+// only ever gets a generic message, never a stack trace.
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GlobalExceptionHandler");
+        logger.LogError(ex, "Excepcion no controlada en {Method} {Path}", context.Request.Method, context.Request.Path);
+
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new { message = "Ocurrio un error inesperado. Intenta de nuevo mas tarde." });
+        }
+    }
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 

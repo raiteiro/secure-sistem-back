@@ -61,11 +61,11 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var inventory = await query
+            var inventory = query
                 .OrderBy(i => i.Product.Name)
                 .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(i => MapToResponse(i))
-                .ToListAsync();
+                .ToList();
 
             return Ok(inventory.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
@@ -103,12 +103,15 @@ namespace SecureSistem.Controllers
             var comboIds = combos.Select(c => c.Id).ToList();
             var companyIds = combos.Select(c => c.CompanyId).Distinct().ToList();
 
+            // EF.Constant forces a literal IN (...) instead of EF Core 8's default OPENJSON-
+            // based parameterization for list.Contains() — OPENJSON is SQL Server 2016+
+            // syntax and this app's production SQL Server is 2008. See TECH_DEBT.md.
             var comboItems = await _context.ProductComboItems
                 .Include(ci => ci.ComponentProduct)
-                .Where(ci => comboIds.Contains(ci.ComboProductId) && ci.IsActive)
+                .Where(ci => EF.Constant(comboIds).Contains(ci.ComboProductId) && ci.IsActive)
                 .ToListAsync();
 
-            var warehousesQuery = _context.Warehouses.Where(w => w.IsActive && companyIds.Contains(w.CompanyId));
+            var warehousesQuery = _context.Warehouses.Where(w => w.IsActive && EF.Constant(companyIds).Contains(w.CompanyId));
             if (warehouseId is not null)
                 warehousesQuery = warehousesQuery.Where(w => w.Id == warehouseId);
 
@@ -121,7 +124,7 @@ namespace SecureSistem.Controllers
             var warehouseIds = warehouses.Select(w => w.Id).ToList();
 
             var stockByProductAndWarehouse = await _context.Inventories
-                .Where(i => componentIds.Contains(i.ProductId) && warehouseIds.Contains(i.WarehouseId))
+                .Where(i => EF.Constant(componentIds).Contains(i.ProductId) && EF.Constant(warehouseIds).Contains(i.WarehouseId))
                 .ToDictionaryAsync(i => (i.ProductId, i.WarehouseId), i => i.Quantity);
 
             var itemsByCombo = comboItems.ToLookup(ci => ci.ComboProductId);

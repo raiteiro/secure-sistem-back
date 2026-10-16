@@ -91,10 +91,10 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var sales = await query
+            var sales = query
                 .OrderByDescending(cs => cs.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
 
             return Ok(sales.Select(MapToSaleResponse).ToList().ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
@@ -185,10 +185,10 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var settlements = await query
+            var settlements = query
                 .OrderByDescending(s => s.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
 
             var responses = new List<SettlementResponse>();
             foreach (var settlement in settlements)

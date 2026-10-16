@@ -23,7 +23,7 @@ namespace SecureSistem.Migrations
         // Every recognized spelling, compared after trimming, removing spaces, and with a
         // case- and accent-insensitive collation. Anything else (including null/empty) → Pieza.
         private const string MapAndReportSql = @"
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 DECLARE @map TABLE (ProductId int PRIMARY KEY, OriginalUnit nvarchar(20) NULL, UnitName nvarchar(50) NULL);
 
@@ -141,7 +141,7 @@ WHERE ci.[IsActive] = 1 AND ci.[Quantity] <> ROUND(ci.[Quantity], u.[DecimalPlac
                 unique: true);
 
             migrationBuilder.Sql(@"
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 INSERT INTO [UnitsOfMeasure] ([Name], [Abbreviation], [DecimalPlaces], [IsActive], [CreatedAt], [CreatedBy])
 SELECT v.[Name], v.[Abbreviation], v.[DecimalPlaces], 1, @now, N'system'
@@ -215,7 +215,7 @@ IF OBJECT_ID(N'[UnitMigrationReport]') IS NULL
             // only to the roles that already manage users (the company's admin roles).
             // CompaniesController.Create adds it for new companies.
             migrationBuilder.Sql(@"
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 INSERT INTO [NavigationRoutes] ([ParentId], [WindowName], [RoutePath], [Icon], [WindowId], [Level], [SortOrder], [CompanyId], [IsActive], [IsDefaultForNewRoles], [CreatedAt], [CreatedBy])
 SELECT admin.[Id], N'Unidades de medida', N'/admin/unidades-medida', N'fas fa-ruler', N'win-units', 1, 5, admin.[CompanyId], 1, 0, @now, N'system'

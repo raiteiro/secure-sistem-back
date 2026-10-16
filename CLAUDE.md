@@ -176,6 +176,13 @@ Domain/Interfaces/IUserRepository.cs
   y aplicarlo manualmente (o desde un paso explícito de CI/CD) contra la base de
   datos de destino antes o durante cada release — nunca depender de que la app
   lo haga sola al iniciar.
+- `dotnet ef migrations script` **no** incluye un `USE [secsistem];` al inicio
+  del archivo que genera — después de regenerarlo, agregar manualmente
+  `USE [secsistem];` + `GO` como las primeras líneas de
+  `Scripts/001_FullMigration.sql`. Es un seguro contra ejecutarlo por error
+  sobre la base equivocada (p. ej. `master`, si quedó seleccionada en el
+  dropdown de SSMS o no se pasó `-d` a `sqlcmd`) — pasó una vez en un
+  despliegue real y dejó las tablas de la app creadas dentro de `master`.
 
 ## Secretos y Variables de Entorno
 

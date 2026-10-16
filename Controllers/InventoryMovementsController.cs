@@ -69,11 +69,11 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var movements = await query
+            var movements = query
                 .OrderByDescending(m => m.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
                 .Select(m => MapToResponse(m))
-                .ToListAsync();
+                .ToList();
 
             return Ok(movements.ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }

@@ -61,10 +61,10 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var orders = await query
+            var orders = query
                 .OrderByDescending(po => po.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
 
             return Ok(orders.Select(MapToResponse).ToList().ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
@@ -124,7 +124,7 @@ namespace SecureSistem.Controllers
             var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
             var products = await _context.Products
                 .Include(p => p.Unit)
-                .Where(p => productIds.Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
+                .Where(p => EF.Constant(productIds).Contains(p.Id) && p.CompanyId == companyId && p.IsActive)
                 .ToListAsync();
             if (products.Count != productIds.Count)
                 return BadRequest(new { message = "Uno o más productos no son válidos." });

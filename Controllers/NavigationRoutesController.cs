@@ -95,10 +95,13 @@ namespace SecureSistem.Controllers
                 .Distinct()
                 .ToHashSet();
 
+            // EF.Constant forces a literal IN (...) instead of EF Core 8's default OPENJSON-
+            // based parameterization for list.Contains() — OPENJSON is SQL Server 2016+
+            // syntax and this app's production SQL Server is 2008. See TECH_DEBT.md.
             var allowedRoutes = await _context.NavigationRoutes
                 .Where(r => r.CompanyId == companyId
                          && r.IsActive
-                         && allowedRouteIds.Contains(r.Id))
+                         && EF.Constant(allowedRouteIds).Contains(r.Id))
                 .OrderBy(r => r.SortOrder)
                 .ToListAsync();
 
@@ -113,7 +116,7 @@ namespace SecureSistem.Controllers
             if (parentIds.Count > 0)
             {
                 var parentRoutes = await _context.NavigationRoutes
-                    .Where(r => parentIds.Contains(r.Id) && r.IsActive)
+                    .Where(r => EF.Constant(parentIds).Contains(r.Id) && r.IsActive)
                     .ToListAsync();
                 allowedRoutes.AddRange(parentRoutes);
             }

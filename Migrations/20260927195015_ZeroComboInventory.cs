@@ -18,7 +18,7 @@ namespace SecureSistem.Migrations
         {
             migrationBuilder.Sql(@"
 -- Business timestamps are stored as naive Mexico City time (see Common/DateTimeHelper.cs).
-DECLARE @now datetime2 = CONVERT(datetime2, SYSDATETIMEOFFSET() AT TIME ZONE 'Central Standard Time (Mexico)');
+DECLARE @now datetime2 = DATEADD(HOUR, -6, SYSUTCDATETIME());
 
 INSERT INTO [InventoryMovements] ([ProductId], [WarehouseId], [CompanyId], [Type], [Quantity], [ResultingQuantity], [Notes], [CreatedAt], [CreatedBy])
 SELECT i.[ProductId], i.[WarehouseId], i.[CompanyId], N'Adjustment', -i.[Quantity], 0,

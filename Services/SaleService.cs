@@ -39,7 +39,7 @@ namespace SecureSistem.Services
                 .Include(p => p.TaxRate)
                 .Include(p => p.Supplier)
                 .Include(p => p.Unit)
-                .Where(p => productIds.Contains(p.Id) && p.CompanyId == request.CompanyId && p.IsActive)
+                .Where(p => EF.Constant(productIds).Contains(p.Id) && p.CompanyId == request.CompanyId && p.IsActive)
                 .ToListAsync();
 
             if (products.Count != productIds.Count)

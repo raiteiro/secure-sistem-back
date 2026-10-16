@@ -75,10 +75,10 @@ namespace SecureSistem.Controllers
             var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
             var totalCount = await query.CountAsync();
 
-            var sales = await query
+            var sales = query
                 .OrderByDescending(s => s.CreatedAt)
                 .ApplyPage(normalizedPage, normalizedPageSize)
-                .ToListAsync();
+                .ToList();
 
             return Ok(sales.Select(MapToResponse).ToList().ToPagedResponse(normalizedPage, normalizedPageSize, totalCount));
         }
@@ -217,7 +217,7 @@ namespace SecureSistem.Controllers
 
             var saleItemIds = sale.Items.Select(i => i.Id).ToList();
             var hasSettledConsignment = await _context.ConsignmentSales
-                .AnyAsync(cs => saleItemIds.Contains(cs.SaleItemId) && cs.SettlementId != null);
+                .AnyAsync(cs => EF.Constant(saleItemIds).Contains(cs.SaleItemId) && cs.SettlementId != null);
             if (hasSettledConsignment)
                 return BadRequest(new { message = "No se puede cancelar: ya se liquidó al consignador por uno o más artículos de esta venta." });
 
@@ -225,7 +225,7 @@ namespace SecureSistem.Controllers
             var now = DateTimeHelper.Now;
 
             var consignmentSales = await _context.ConsignmentSales
-                .Where(cs => saleItemIds.Contains(cs.SaleItemId) && !cs.IsVoided)
+                .Where(cs => EF.Constant(saleItemIds).Contains(cs.SaleItemId) && !cs.IsVoided)
                 .ToListAsync();
             foreach (var consignmentSale in consignmentSales)
                 consignmentSale.IsVoided = true;
